@@ -1,6 +1,6 @@
 # Brainfold: a shared brain for agents
 
-A personal, independent project with open source intent. There is no remote repository or license yet.
+A personal, independent open source project, licensed under [Apache-2.0](LICENSE).
 
 Brainfold is an MCP server that turns a folder into a team's shared brain: files with permissions that any harness (Claude Code, Codex or another) reads and writes. Full scope, including what it deliberately does not do, is in [docs/scope.md](docs/scope.md).
 

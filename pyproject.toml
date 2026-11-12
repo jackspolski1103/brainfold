@@ -7,6 +7,8 @@ name = "brainfold"
 version = "0.1.0"
 description = "A shared, permissioned brain of folders and files for any agent harness, over MCP"
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = ["mcp>=1.30,<2", "uvicorn>=0.34,<1"]
 
