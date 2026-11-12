@@ -1,53 +1,44 @@
-# Alcance
+# Scope
 
-Confirmado por el autor el 12 de noviembre de 2026. Véanse [0008](decisions/0008-alcance-acotado.md) y [0009](decisions/0009-panel-y-cuentas.md).
+Confirmed by the author on 2026-11-12. See decisions [0008](decisions/0008-bounded-scope.md), [0009](decisions/0009-panel-and-accounts.md) and [0010](decisions/0010-core-plan.md).
 
-**OIF es un servidor MCP que convierte una carpeta en el cerebro compartido de un equipo:
-archivos con permisos que cualquier harness lee y escribe.**
+**OIF is an MCP server that turns a folder into a team's shared brain: files with permissions that any harness reads and writes.**
 
-## Lo que es
+## What it is
 
-1. **Un formato.** Una carpeta con un `.oif.toml` por carpeta: `description`, `start_here`,
-   `read`, `write`. Son archivos comunes: se abren, editan y versionan sin el servidor.
-2. **Un servidor MCP** con cinco herramientas: listar, leer, escribir, buscar y listar skills.
-3. **Permisos por carpeta**, con grupos, denegados por defecto.
-4. **Skills dentro del árbol.** Una skill es una carpeta con un `SKILL.md`; el agente ve solo
-   las de carpetas que puede leer. Ejecutarla es tarea del harness.
-5. **Cuentas propias.** Email y contraseña; el primer usuario administra e invita al resto;
-   cada persona genera el token con el que conecta su harness. Una organización por servidor.
-6. **Un panel web** al estilo de Infisical o Langfuse (API lista, interfaz sin construir):
-   accesos por carpeta, miembros y tokens, explorador de archivos de solo lectura y actividad.
+1. **A format.** A folder with one `.oif.toml` per folder: `description`, `start_here`, `read`, `write`. Plain files: they open, edit and version without the server.
+2. **An MCP server** with file tools for agents: list, read, write, search, and (phase 1) edit, append, move, delete and folder guidance.
+3. **Permissions per folder**, with groups, denied by default.
+4. **Skills inside the tree.** A skill is a folder with a `SKILL.md`. The server lists to each agent the skills it can read and serves them through `use_skill`. Running the procedure is the harness's job.
+5. **Own accounts.** Email and password; the first account administers and invites the rest; each person creates the token their harness uses. One organization per server.
+6. **A web panel** in the style of Infisical or Langfuse (API built, UI not built).
 
-Un equipo levanta su propio servidor y cada persona conecta su harness con su token.
+A team runs its own server and each person connects their harness with their token.
 
-## Lo que no es
+## What it is not
 
-| Fuera de alcance | Quién lo resuelve |
+| Out of scope | Who solves it |
 |---|---|
-| Harness, runtime, adapters de modelos | Claude Code, Codex u otro |
-| Conectores a correo, bases de datos, etc. | Los MCP que cada harness ya trae |
-| Ejecutar skills | El harness; acá una skill es una carpeta con `SKILL.md` |
-| Extraer memoria automáticamente de conversaciones | El agente decide qué escribir |
-| Embeddings, RAG, búsqueda semántica | Búsqueda por texto y metadata de carpetas |
-| Motor de borradores, revisión y aprobación | Permiso de escritura = puede publicar; quien quiera revisión usa PRs de git |
-| Editor web de contenido, chat web | Editor de texto, git y el harness |
-| Envío de emails de invitación | El administrador comparte el enlace de invitación |
-| Google, GitHub u OIDC | Previsto para después de las cuentas propias |
-| Alojamiento multiempresa | Cada equipo levanta el suyo |
-| Modo local por persona sincronizado con git | Descartado: los permisos de lectura dejan de valer |
+| Harness, runtime, model adapters | Claude Code, Codex or another |
+| Connectors to mail, databases and so on | The MCP servers each harness already has |
+| Running skills | The harness |
+| Extracting memory automatically from conversations | The agent decides what to write |
+| Embeddings, RAG, semantic search | Text search and folder guidance |
+| Draft, review and approval engine | Write permission publishes; deferred as a TODO |
+| Web content editor, web chat | A text editor, git and the harness |
+| Reading file formats (PDF, spreadsheets) | The harness, after fetching the file |
+| Multi-tenant hosting | Each team runs its own |
+| Local mode per person synced through git | Rejected: it voids read permissions |
 
-## Qué lo hace armable
+## What makes it composable
 
-- El cerebro es una carpeta: se combina con git, grep, un editor o un backup.
-- El servidor es un MCP más y convive con los que el equipo ya tenga.
-- Las carpetas y sus permisos viven en archivos; cuentas, grupos, tokens y actividad, en un
-  único archivo SQLite.
-- Dos puntos de extensión: dónde se guarda y cómo se identifica a la persona. No se crean
-  interfaces de plugin hasta que exista una segunda implementación real.
+- The brain is a folder: it combines with git, grep, an editor or a backup.
+- The server is one more MCP server next to the ones a team already has.
+- Folders and their permissions live in files; accounts, groups, tokens and activity live in one SQLite file outside the brain.
 
-## Criterios
+## Criteria
 
-- Denegar por defecto; lo denegado se ve igual que lo inexistente.
-- Todo es un archivo; el historial es git.
-- La metadata de cada carpeta guía al agente hacia lo importante.
-- Antes de agregar algo, comprobar que no está en la tabla de «lo que no es».
+- Deny by default; what is denied looks the same as what does not exist.
+- Everything is a file; history is git.
+- Each folder's metadata guides the agent to what matters.
+- Before adding something, check it is not in the "what it is not" table.

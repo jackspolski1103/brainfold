@@ -19,7 +19,7 @@ from oif.server import create_app
 
 EXAMPLE = Path(__file__).parent.parent / "examples" / "brain"
 ADMIN, ALICE, BOB = "admin@atlas.test", "alice@atlas.test", "bob@atlas.test"
-PASSWORD = "una-clave-larga"
+PASSWORD = "a-long-password"
 
 
 @pytest.fixture
@@ -50,20 +50,20 @@ def test_first_account_administers_and_members_join_by_invite(app: Any) -> None:
     other = TestClient(app)
     assert (
         code(other.post("/api/setup", json={"email": BOB, "password": PASSWORD}))
-        == "ya_configurado"
+        == "already_set_up"
     )
     assert other.get("/api/users").status_code == 401
 
     invite = admin.post("/api/users", json={"email": ALICE}).json()["invite"]
-    assert code(other.post("/api/accept", json={"invite": invite, "password": "corta"})) == (
-        "contrasena_invalida"
+    assert code(other.post("/api/accept", json={"invite": invite, "password": "short"})) == (
+        "invalid_password"
     )
     assert (
         other.post("/api/accept", json={"invite": invite, "password": PASSWORD}).status_code == 200
     )
     assert code(
         TestClient(app).post("/api/accept", json={"invite": invite, "password": PASSWORD})
-    ) == ("invitacion_invalida")
+    ) == ("invalid_invite")
     # Members cannot administer.
     for call in (
         lambda: other.get("/api/users"),
@@ -72,7 +72,7 @@ def test_first_account_administers_and_members_join_by_invite(app: Any) -> None:
         lambda: other.put("/api/folder", json={"path": "/", "read": ["*"]}),
     ):
         assert call().status_code == 403
-    assert code(admin.delete(f"/api/users/{ADMIN}")) == "ultimo_admin"
+    assert code(admin.delete(f"/api/users/{ADMIN}")) == "last_admin"
 
 
 def test_login_is_throttled_and_sessions_end(app: Any) -> None:
@@ -83,10 +83,10 @@ def test_login_is_throttled_and_sessions_end(app: Any) -> None:
     fresh = TestClient(app)
     for _ in range(5):
         assert code(fresh.post("/api/login", json={"email": ADMIN, "password": "x" * 12})) == (
-            "credenciales_invalidas"
+            "invalid_credentials"
         )
     assert code(fresh.post("/api/login", json={"email": ADMIN, "password": PASSWORD})) == (
-        "demasiados_intentos"
+        "too_many_attempts"
     )
     # Cross-site form posts cannot carry a JSON content type.
     assert fresh.post("/api/login", data={"email": ADMIN, "password": PASSWORD}).status_code == 400
@@ -96,25 +96,25 @@ def test_panel_manages_groups_folders_files_and_activity(app: Any) -> None:
     admin = TestClient(app)
     admin.post("/api/setup", json={"email": ADMIN, "password": PASSWORD})
     alice, bob = join(app, admin, ALICE), join(app, admin, BOB)
-    assert code(admin.put("/api/groups/costs", json={"members": ["nadie@atlas.test"]})) == (
-        "grupo_invalido"
+    assert code(admin.put("/api/groups/costs", json={"members": ["nobody@atlas.test"]})) == (
+        "invalid_group"
     )
     admin.put("/api/groups/costs", json={"members": [ALICE]})
     admin.put("/api/groups/contracts", json={"members": [BOB]})
 
     entries = {
-        e["path"] for e in alice.get("/api/tree", params={"path": "/proyectos"}).json()["entries"]
+        e["path"] for e in alice.get("/api/tree", params={"path": "/projects"}).json()["entries"]
     }
-    assert entries == {"/proyectos/costos"}
-    path = {"path": "/proyectos/costos/proceso.md"}
+    assert entries == {"/projects/costs"}
+    path = {"path": "/projects/costs/process.md"}
     assert alice.get("/api/file", params=path).status_code == 200
     assert bob.get("/api/file", params=path).status_code == 404
     # The administrator sees structure and grants, not content, until granted.
-    managed = admin.get("/api/tree", params={"path": "/proyectos"}).json()
+    managed = admin.get("/api/tree", params={"path": "/projects"}).json()
     assert len(managed["entries"]) == 2 and managed["entries"][0]["read"]
     assert admin.get("/api/file", params=path).status_code == 404
 
-    change = {"path": "/proyectos/costos", "description": "Costos", "read": ["@costs", BOB]}
+    change = {"path": "/projects/costs", "description": "Costs", "read": ["@costs", BOB]}
     assert admin.put("/api/folder", json=change).status_code == 200
     assert bob.get("/api/file", params=path).status_code == 200
     admin.delete(f"/api/users/{BOB}")
@@ -124,7 +124,7 @@ def test_panel_manages_groups_folders_files_and_activity(app: Any) -> None:
         (row["actor"], row["action"], row["ok"])
         for row in admin.get("/api/activity").json()["activity"]
     ]
-    assert (BOB, "leer", False) in actions and (ADMIN, "editar_accesos", True) in actions
+    assert (BOB, "read", False) in actions and (ADMIN, "edit_access", True) in actions
 
 
 @asynccontextmanager
@@ -161,21 +161,17 @@ async def test_a_harness_connects_with_a_personal_token_until_it_is_revoked(tmp_
                 return result.isError, result.content[0].text
 
     async with running(app) as url:
-        failed, text = await call(token, "listar_skills", {})
-        assert not failed and "analizar-costos" in text
-        failed, text = await call(
-            token, "escribir_memoria", {"path": "/proyectos/costos/n.md", "content": "x"}
-        )
+        failed, text = await call(token, "list", {"path": "/skills"})
+        assert not failed and "analyze-costs" in text
+        failed, text = await call(token, "write", {"path": "/projects/costs/n.md", "content": "x"})
         assert not failed
-        assert (await call(token, "leer_memoria", {"path": "/personas/alice/preferencias.md"}))[
-            0
-        ] is False
-        failed, text = await call(None, "listar_memoria", {})
-        assert failed and "autenticación" in text
+        assert (await call(token, "read", {"path": "/people/alice/preferences.md"}))[0] is False
+        failed, text = await call(None, "list", {})
+        assert failed and "Authentication" in text
         accounts.revoke(ALICE, identifier)
-        assert (await call(token, "listar_memoria", {}))[0] is True
+        assert (await call(token, "list", {}))[0] is True
     done = {(row["action"], row["ok"]) for row in accounts.activity()}
-    assert {("skills", True), ("escribir", True), ("leer", True)} <= done
+    assert {("write", True), ("read", True)} <= done
 
 
 async def test_use_skill_lists_only_what_each_identity_can_read(tmp_path: Path) -> None:
@@ -201,15 +197,17 @@ async def test_use_skill_lists_only_what_each_identity_can_read(tmp_path: Path) 
 
     async with running(app) as url:
         seen = await session_for(tokens[ALICE], description)
-        assert "analizar-costos-" in seen and "muestras truncadas" in seen
-        name = seen.split("- analizar-costos-")[1].split(":")[0]
+        assert "analyze-costs-" in seen and "truncated samples" in seen
+        name = seen.split("- analyze-costs-")[1].split(":")[0]
         for other in (tokens[BOB], None):
-            assert "analizar-costos" not in await session_for(other, description)
+            assert "analyze-costs" not in await session_for(other, description)
 
         async def use(session: ClientSession) -> Any:
-            return await session.call_tool("use_skill", {"name": f"analizar-costos-{name}"})
+            return await session.call_tool("use_skill", {"name": f"analyze-costs-{name}"})
 
-        assert "Pedí primero el resumen" in (await session_for(tokens[ALICE], use)).content[0].text
+        assert (
+            "Ask for the summary first" in (await session_for(tokens[ALICE], use)).content[0].text
+        )
         assert (await session_for(tokens[BOB], use)).isError
 
         async def instructions(token: str | None) -> str:
@@ -219,6 +217,6 @@ async def test_use_skill_lists_only_what_each_identity_can_read(tmp_path: Path) 
                     return (await session.initialize()).instructions or ""
 
         # Tool descriptions can be deferred by the harness; instructions are always in context.
-        assert f"analizar-costos-{name}" in await instructions(tokens[ALICE])
+        assert f"analyze-costs-{name}" in await instructions(tokens[ALICE])
         for other in (tokens[BOB], None):
-            assert "analizar-costos" not in await instructions(other)
+            assert "analyze-costs" not in await instructions(other)

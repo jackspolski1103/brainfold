@@ -1,8 +1,0 @@
-{
-  "sdk_source": "pinned repository sdk/python/src",
-  "tier": "local",
-  "local_query_without_review": 1,
-  "after_local_revoke": 0,
-  "copy_still_has_five_retries": true,
-  "warning": "single-process local store; not a human authorization test"
-}

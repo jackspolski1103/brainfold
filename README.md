@@ -1,59 +1,60 @@
-# OIF — cerebro compartido para agentes
+# OIF: a shared brain for agents
 
-Proyecto personal e independiente, con intención open source. **OIF es un nombre provisional.** Todavía no hay repositorio remoto ni licencia elegida.
+A personal, independent project with open source intent. **OIF is a working name.** There is no remote repository or license yet.
 
-OIF es un servidor MCP que convierte una carpeta en el cerebro compartido de un equipo: archivos con permisos que cualquier harness (Claude Code, Codex u otro) lee y escribe. El alcance completo, incluido lo que deliberadamente no hace, está en [docs/scope.md](docs/scope.md).
+OIF is an MCP server that turns a folder into a team's shared brain: files with permissions that any harness (Claude Code, Codex or another) reads and writes. Full scope, including what it deliberately does not do, is in [docs/scope.md](docs/scope.md).
 
-## Estado
+## Status
 
-Implementación de desarrollo. Funcionan el servidor MCP sobre una carpeta en disco, los permisos de lectura y escritura por carpeta, el descubrimiento de skills, las cuentas con email y contraseña, los tokens por persona, los grupos, el registro de actividad y la API del panel. **La interfaz web todavía no existe**; por ahora la API se usa con `curl`. El servidor solo escucha en loopback. Los datos de ejemplo son sintéticos.
+Development implementation. What works today: the MCP server over a folder on disk, read and write permissions per folder, text search, skills delivered to each agent through `use_skill`, email and password accounts, personal tokens, groups, an activity log, and the JSON API for the future panel. **The web interface does not exist yet.** The server listens on loopback only. Example data is synthetic. The plan in progress is [docs/designs/core-permissioned-memory.md](docs/designs/core-permissioned-memory.md).
 
-## Probarlo
+## Try it
 
 ```bash
 uv sync
-uv run oif serve --root examples/brain        # cuentas y actividad en ./oif.db
+uv run oif serve --root examples/brain        # accounts and activity go to ./oif.db
 
-# En otra terminal: crear el administrador, un grupo y un token de harness.
+# In another terminal: create the administrator, a group and a harness token.
 J='Content-Type: application/json'; U=http://127.0.0.1:8020
-curl -c cookies.txt -H "$J" -d '{"email":"vos@ejemplo.com","password":"una-clave-larga"}' $U/api/setup
-curl -b cookies.txt -X PUT -H "$J" -d '{"members":["vos@ejemplo.com"]}' $U/api/groups/costs
-curl -b cookies.txt -H "$J" -d '{"name":"claude code"}' $U/api/tokens   # muestra el token una vez
+curl -c cookies.txt -H "$J" -d '{"email":"you@example.com","password":"a-long-password"}' $U/api/setup
+curl -b cookies.txt -X PUT -H "$J" -d '{"members":["you@example.com"]}' $U/api/groups/costs
+curl -b cookies.txt -H "$J" -d '{"name":"claude code"}' $U/api/tokens   # shows the token once
 
 claude mcp add --transport http oif $U/mcp --header "Authorization: Bearer <token>"
 ```
 
-Herramientas MCP: `listar_memoria`, `leer_memoria`, `escribir_memoria`, `buscar_memoria`, `listar_skills`.
+MCP tools: `list`, `read`, `write`, `search`, `use_skill`.
 
-## Formato del cerebro
+## Brain format
 
-Cada carpeta puede tener un `.oif.toml`:
+Each folder may carry a `.oif.toml`:
 
 ```toml
-description = "Proceso y aprendizajes del equipo de costos."
-start_here = ["/proyectos/costos/proceso.md"]
-read = ["@costs"]     # emails, @grupo o "*"
+description = "Process and learnings of the costs team."
+start_here = ["/projects/costs/process.md"]
+read = ["@costs"]     # emails, @group or "*"
 write = ["@costs"]
 ```
 
-- **Leer** se deniega salvo que alguna carpeta del camino lo conceda; cada carpeta que declara `read` restringe a las que cuelgan de ella.
-- **Escribir** lo decide la carpeta más cercana que declare `write`; sin declaración, se deniega.
-- Los grupos y sus miembros se administran en la base de cuentas, por la API del panel.
-- Un administrador ve la estructura y los accesos de todas las carpetas, pero no lee contenido que no tenga concedido.
-- Los archivos que empiezan con punto y los enlaces simbólicos nunca son visibles para el agente.
-- Si la raíz es un repositorio git, cada escritura queda como commit a nombre de quien escribió.
-- Una skill es una carpeta con un `SKILL.md`. Véase `examples/brain/`.
+- **Read** is denied unless some folder on the path grants it; every folder that declares `read` narrows what hangs below it.
+- **Write** is decided by the nearest folder that declares `write`; with no declaration it is denied.
+- Groups and their members are managed in the accounts database through the API.
+- An administrator sees the structure and access lists of every folder, but does not read content they were not granted.
+- Files starting with a dot and symlinks are never visible to an agent.
+- If the root is a git repository, every write is committed under the author's name.
+- A skill is a folder with a `SKILL.md`. See `examples/brain/`.
 
-## Verificación
+## Verify
 
 ```bash
 uv run pytest -q
 uv run ruff check src tests
 ```
 
-## Documentación
+## Documentation
 
-- [Alcance](docs/scope.md)
-- [Registro de decisiones](docs/decisions/README.md)
-- [Modo de colaboración](AGENTS.md)
-- Antecedentes históricos: [visión original](docs/vision.md), [panorama](docs/research/landscape-2026-11-11.md) y [comparación ejecutada](docs/research/comparison-atlas/README.md)
+- [Scope](docs/scope.md)
+- [Decision log](docs/decisions/README.md)
+- [Prior art](docs/prior-art.md)
+- [Core plan](docs/designs/core-permissioned-memory.md) and [TODOS](TODOS.md)
+- [How to collaborate](AGENTS.md)

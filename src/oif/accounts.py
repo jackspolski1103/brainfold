@@ -55,19 +55,19 @@ def _hash(password: str, salt: bytes) -> str:
 
 def _email(value: Any) -> str:
     if not isinstance(value, str) or len(value) > 254 or not EMAIL.fullmatch(value.strip()):
-        raise OIFError("email_invalido", "El email no es válido.")
+        raise OIFError("invalid_email", "The email is not valid.")
     return value.strip().lower()
 
 
 def _password(value: Any) -> str:
     if not isinstance(value, str) or not 10 <= len(value) <= 256:
-        raise OIFError("contrasena_invalida", "La contraseña debe tener entre 10 y 256 caracteres.")
+        raise OIFError("invalid_password", "The password must be 10 to 256 characters long.")
     salt = secrets.token_bytes(16)
     return f"{salt.hex()}:{_hash(value, salt)}"
 
 
 def _unauthenticated() -> OIFError:
-    return OIFError("no_autenticado", "La autenticación es obligatoria.")
+    return OIFError("unauthenticated", "Authentication is required.")
 
 
 class Accounts:
@@ -90,7 +90,7 @@ class Accounts:
         """The first account becomes the administrator; later accounts need an invite."""
         with self._lock:
             if not self.needs_setup():
-                raise OIFError("ya_configurado", "El servidor ya tiene un administrador.")
+                raise OIFError("already_set_up", "The server already has an administrator.")
             self._run(
                 "INSERT INTO users VALUES (?, 'admin', ?, NULL)", _email(email), _password(password)
             )
@@ -98,14 +98,14 @@ class Accounts:
 
     def invite(self, email: Any, role: Any) -> str:
         if role not in {"admin", "member"}:
-            raise OIFError("rol_invalido", "El rol debe ser admin o member.")
+            raise OIFError("invalid_role", "The role must be admin or member.")
         token = secrets.token_urlsafe(32)
         try:
             self._run(
                 "INSERT INTO users VALUES (?, ?, NULL, ?)", _email(email), role, _digest(token)
             )
         except sqlite3.IntegrityError:
-            raise OIFError("ya_existe", "Ya existe una cuenta con ese email.") from None
+            raise OIFError("already_exists", "An account with that email already exists.") from None
         return token
 
     def accept(self, invite: Any, password: Any) -> str:
@@ -113,7 +113,7 @@ class Accounts:
         with self._lock:
             rows = self._run("SELECT email FROM users WHERE invite = ?", _digest(str(invite)))
             if not rows:
-                raise OIFError("invitacion_invalida", "La invitación no es válida o ya se usó.")
+                raise OIFError("invalid_invite", "The invite is not valid or was already used.")
             self._run(
                 "UPDATE users SET password = ?, invite = NULL WHERE email = ?", hashed, rows[0][0]
             )
@@ -137,7 +137,7 @@ class Accounts:
         with self._lock:
             admins = [row[0] for row in self._run("SELECT email FROM users WHERE role = 'admin'")]
             if admins == [email]:
-                raise OIFError("ultimo_admin", "No se puede quitar al único administrador.")
+                raise OIFError("last_admin", "The only administrator cannot be removed.")
             self._run("DELETE FROM users WHERE email = ?", email)  # cascades to tokens, groups
 
     def groups(self) -> dict[str, list[str]]:
@@ -149,7 +149,7 @@ class Accounts:
     def set_group(self, name: str, members: Any) -> None:
         """Replace a group's members; an empty list deletes the group."""
         if not GROUP.fullmatch(name) or not isinstance(members, list):
-            raise OIFError("grupo_invalido", "El nombre del grupo o sus miembros no son válidos.")
+            raise OIFError("invalid_group", "The group name or its members are not valid.")
         with self._lock:
             try:
                 self._run("BEGIN")
@@ -159,16 +159,16 @@ class Accounts:
                 self._run("COMMIT")
             except sqlite3.Error:
                 self._run("ROLLBACK")
-                raise OIFError("grupo_invalido", "Algún miembro no tiene cuenta.") from None
+                raise OIFError("invalid_group", "A member has no account.") from None
 
     # --- authentication ----------------------------------------------------------
 
     def login(self, email: Any, password: Any) -> str:
         email = str(email).strip().lower()
-        failed = OIFError("credenciales_invalidas", "Email o contraseña incorrectos.")
+        failed = OIFError("invalid_credentials", "Wrong email or password.")
         count, since = self._failures.get(email, (0, 0.0))
         if count >= MAX_FAILURES and time.time() - since < LOCK_SECONDS:
-            raise OIFError("demasiados_intentos", "Demasiados intentos. Probá en un minuto.")
+            raise OIFError("too_many_attempts", "Too many attempts. Try again in a minute.")
         rows = self._run("SELECT password FROM users WHERE email = ?", email)
         salt, _, expected = (rows[0][0] if rows and rows[0][0] else "00:").partition(":")
         # Hash even for unknown accounts so timing does not reveal which emails exist.
@@ -182,7 +182,7 @@ class Accounts:
 
     def issue(self, email: str, kind: str, name: Any, ttl: float | None = None) -> tuple[int, str]:
         if not isinstance(name, str) or not 1 <= len(name.strip()) <= 80:
-            raise OIFError("nombre_invalido", "El token necesita un nombre de hasta 80 caracteres.")
+            raise OIFError("invalid_name", "The token needs a name of up to 80 characters.")
         token = f"oif_{secrets.token_urlsafe(32)}"
         now = time.time()
         with self._lock:

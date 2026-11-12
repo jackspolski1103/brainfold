@@ -1,45 +1,34 @@
-# Credenciales y configuración local
+# Credentials and local configuration
 .env
 .env.*
-!.env.example
-!.env.*.example
 .secrets/
 secrets/
 credentials/
 *.pem
 *.key
 
-# Datos locales y bases de desarrollo
+# Local data
 .data/
 *.db
 *.db-*
 *.sqlite
 *.sqlite-*
-*.sqlite3
-*.sqlite3-*
 backups/
+/brain/
 
-# Dependencias y artefactos generados
-node_modules/
-.pnpm-store/
+# Dependencies and generated files
 .venv/
 venv/
 __pycache__/
 *.py[cod]
 dist/
 build/
-.next/
-coverage/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-*.tsbuildinfo
 
-# Archivos locales y temporales
+# Local and temporary files
 .DS_Store
 *.log
-# Evidencia revisada del experimento sintético; no son logs de usuarios.
-!docs/research/comparison-atlas/evidence/cq/server-run.log
-!docs/research/comparison-atlas/evidence/cq/upstream-tests.log
 work/
 tmp/

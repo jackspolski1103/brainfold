@@ -19,15 +19,17 @@ def _host(value: str) -> str:
     except ValueError:
         pass
     # ponytail: loopback only; put a TLS reverse proxy in front before lifting this.
-    raise argparse.ArgumentTypeError("El servidor de desarrollo debe escuchar en loopback.")
+    raise argparse.ArgumentTypeError("The server must listen on loopback.")
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="oif", description="Cerebro compartido por MCP.")
+    parser = argparse.ArgumentParser(prog="oif", description="A shared brain over MCP.")
     commands = parser.add_subparsers(dest="command", required=True)
-    serve = commands.add_parser("serve", help="Servir una carpeta como cerebro compartido")
+    serve = commands.add_parser("serve", help="Serve a folder as a shared brain")
     serve.add_argument("--root", type=Path, required=True)
-    serve.add_argument("--db", type=Path, default=Path("oif.db"), help="Cuentas y actividad")
+    serve.add_argument(
+        "--db", type=Path, default=Path("oif.db"), help="Accounts and activity database"
+    )
     serve.add_argument("--host", type=_host, default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8020)
     args = parser.parse_args(argv)
@@ -41,9 +43,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Error ({exc.code}): {exc.message}", file=sys.stderr)
         return 1
     except OSError:
-        print("Error: la carpeta del cerebro no existe o no se puede leer.", file=sys.stderr)
+        print("Error: the brain folder does not exist or cannot be read.", file=sys.stderr)
         return 1
-    print(f"Cerebro OIF · MCP en http://{args.host}:{args.port}/mcp · API en /api")
+    print(f"OIF brain · MCP at http://{args.host}:{args.port}/mcp · API at /api")
     uvicorn.run(app, host=args.host, port=args.port, access_log=False, log_level="warning")
     return 0
 

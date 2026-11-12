@@ -1,42 +1,36 @@
-# Instrucciones del proyecto
+# Project instructions
 
-## Contexto confirmado
+## Confirmed context
 
-- Este es un proyecto personal del usuario, independiente de su trabajo.
-- La cuenta personal de GitHub elegida por el autor es `jackspolski1103`. Toda creación o publicación del proyecto debe usar esa cuenta; verificar la identidad autenticada antes de escribir en GitHub.
-- No usar datos, cuentas, repositorios, servicios ni credenciales laborales para implementarlo.
-- El alcance vigente está en `docs/scope.md` (decisión `0008`). Antes de proponer o construir algo, comprobar que no figura en su tabla «Lo que no es». `docs/vision.md` y `docs/research/` son antecedentes históricos, no el plan.
-- El autor quiere participar en decisiones de producto y arquitectura durante la construcción.
-- El producto es un cerebro compartido agnóstico al harness: carpetas y archivos con permisos expuestos por MCP para Claude Code, Codex u otros. No construir ni proponer un harness propio como producto. Python es la elección confirmada. Véase `docs/decisions/0007-cerebro-agnostico-al-harness.md`.
-- La colaboración es el núcleo: un servidor por equipo al que cada persona conecta su harness. El autor rechazó el modo local por persona; no volver a proponerlo.
-- La experiencia cotidiana es conversacional dentro del harness de cada persona; no exigir comandos ni administración manual de memoria.
-- El panel web sigue el estilo de Infisical o Langfuse: React (Vite, shadcn/ui) sobre la API del servidor Python, con cuentas propias de email y contraseña (decisión `0009`). Su primera versión cubre accesos por carpeta, miembros y tokens, explorador de solo lectura y actividad. No construir editor web de contenido ni motor de revisión y aprobación.
-- La memoria se concibe como un repositorio navegable de carpetas, subcarpetas y archivos con permisos. El agente puede explorar libremente dentro de su autorización, sin exigir gestión manual al usuario. Hay listado, lectura, escritura y búsqueda sobre disco (`src/oif/brain.py`); promoción y revisión siguen pendientes. Véase `docs/decisions/0006-memoria-como-repositorio-con-permisos.md`.
+- This is the author's personal project, independent of their job. Never use work data, accounts, repositories, services or credentials.
+- The author's personal GitHub account is `jackspolski1103`. Any creation or publication must use that account; verify the authenticated identity before writing to GitHub.
+- Current scope is in `docs/scope.md`; the plan in progress is `docs/designs/core-permissioned-memory.md` (decision `0010`). Before proposing or building something, check it is not in the scope's "what it is not" table.
+- The product is a harness-agnostic shared brain: folders and files with permissions exposed over MCP to Claude Code, Codex or others. Do not build or propose an own harness.
+- Collaboration is the core: one server per team, each person connecting their own harness. The author rejected a local mode per person; do not propose it again.
+- Python is the confirmed language. The web panel follows the style of Infisical or Langfuse: React over the Python server's API, own email and password accounts (decision `0009`). Do not build a web content editor or a review and approval engine.
+- **Everything in the repository is in English**: code, tool names, error codes and messages, docs, examples and this file. Conversation with the author is in Spanish.
+- The author wants to take part in product and architecture decisions.
 
-- Todo el contenido del repositorio debe estar en inglés: código, nombres de herramientas, mensajes de error, documentación, ejemplos y este archivo (instrucción explícita del autor, 12/11/2026). Lo existente en español se traduce como parte del plan del core; todo archivo nuevo se escribe en inglés. La conversación con el autor sigue en español.
+## How to collaborate
 
-## Cómo colaborar
+- Work in small, reviewable increments, one commit per finished task on the working branch.
+- When a task list is already agreed, continue through it without asking between tasks.
+- Before committing to infrastructure, an identity provider, scope changes, a license or an external publication, present one concrete recommendation with its main alternative and ask. Do not reopen confirmed choices without a concrete reason.
+- Ask few decisions at a time, and keep doing independent work while waiting.
+- Record confirmed decisions in `docs/decisions/`; tell proposals from agreements.
+- Never present a demo, a simulated adapter or an interface as working production functionality.
+- Explain changes, verification and the next decision to the author in Spanish.
 
-- Avanzar en incrementos pequeños y revisables.
-- Antes de comprometer infraestructura, proveedor de identidad, alcance del MVP, licencia o una publicación externa, presentar una recomendación concreta con su principal alternativa y consultar la elección. No reabrir elecciones ya confirmadas sin una razón concreta.
-- Preguntar pocas decisiones por vez, cuando afecten el siguiente incremento. Continuar trabajo independiente mientras llega la respuesta.
-- Resolver detalles rutinarios de implementación sin pedir confirmación repetida.
-- Registrar decisiones confirmadas en `docs/decisions/`; distinguir propuestas de acuerdos.
-- No presentar una demo, un adapter simulado o una interfaz como funcionalidad productiva implementada.
-- Explicar cambios, validación y siguiente decisión en español.
+## Credentials and permissions
 
-## Credenciales y permisos
+- Never ask the author to paste passwords or tokens in the chat.
+- Never commit secrets, real environment files or user data.
+- Keep identity, authorization, tool connections and model credentials separate.
+- Secrets never go into prompts or model results.
+- Private content and anything derived from it keeps its scope unless explicitly promoted.
 
-- No pedir al usuario que pegue contraseñas o tokens en el chat.
-- Nunca versionar secretos, archivos de entorno reales ni datos de usuarios.
-- Mantener separados identidad, autorización, conexiones de herramientas y credenciales de modelos.
-- Los secretos no se incluyen en prompts ni resultados del modelo. Las operaciones externas pasan por componentes de confianza autorizados, locales o del servidor según el modo de ejecución.
-- El contenido privado y los derivados mantienen su alcance salvo promoción explícita.
-- Comprobar tanto solicitante como audiencia de la respuesta.
+## Implementation and verification
 
-## Implementación y verificación
-
-- Mantener el núcleo independiente de proveedores concretos mediante contratos y adapters.
-- Probar denegaciones, aislamiento y revocación al implementar estos comportamientos.
-- Mantener los tests proporcionales al cambio; una modificación documental no requiere servicios ni llamadas a proveedores.
-- Evitar gastos, despliegues y servicios externos hasta que formen parte del incremento elegido.
+- Test denials, isolation and revocation whenever such behavior is implemented.
+- Keep tests proportional to the change.
+- Avoid spending, deployments and external services until they are part of the chosen increment.

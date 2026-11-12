@@ -31,7 +31,7 @@ MAX_SEARCH_HITS = 50
 
 def _unavailable() -> OIFError:
     # Same public error for an invalid path, wrong kind, absence or denial.
-    return OIFError("ruta_no_disponible", "La ruta no está disponible.")
+    return OIFError("unavailable", "The path is not available.")
 
 
 def _canonical(path: str) -> bool:
@@ -61,7 +61,7 @@ class Brain:
         self.groups = groups
         self.root = root.resolve(strict=True)
         if not self.root.is_dir():
-            raise OIFError("configuracion_invalida", "La raíz del cerebro no es una carpeta.")
+            raise OIFError("invalid_configuration", "The brain root is not a folder.")
 
     def _real(self, path: str) -> Path:
         if not _canonical(path):
@@ -151,7 +151,7 @@ class Brain:
             raise _unavailable()
         try:
             if target.stat().st_size > MAX_FILE_BYTES:
-                raise OIFError("archivo_demasiado_grande", "El archivo excede el límite.")
+                raise OIFError("file_too_large", "The file exceeds the size limit.")
             return {"path": path, "content": target.read_text("utf-8")}
         except (OSError, UnicodeDecodeError):
             raise _unavailable() from None
@@ -162,13 +162,13 @@ class Brain:
         if not read or target == self.root or target.is_dir():
             raise _unavailable()
         if not write:
-            raise OIFError("sin_permiso_escritura", "No tenés permiso de escritura en esta ruta.")
+            raise OIFError("write_denied", "You do not have write permission on this path.")
         try:
             data = content.encode("utf-8")
         except UnicodeEncodeError:
-            raise OIFError("contenido_invalido", "El contenido no es texto válido.") from None
+            raise OIFError("invalid_content", "The content is not valid text.") from None
         if len(data) > MAX_FILE_BYTES:
-            raise OIFError("archivo_demasiado_grande", "El contenido excede el límite.")
+            raise OIFError("file_too_large", "The content exceeds the size limit.")
         target.parent.mkdir(parents=True, exist_ok=True)
         # ponytail: last write wins; add an expected-version check when edits collide.
         temporary = target.with_name(f".{target.name}.tmp")
@@ -199,7 +199,7 @@ class Brain:
             or not all(isinstance(item, str) and _canonical(item) for item in start_here)
             or not all(isinstance(item, str) and GRANT.fullmatch(item) for item in grants)
         ):
-            raise OIFError("metadata_invalida", "La descripción o los accesos no son válidos.")
+            raise OIFError("invalid_metadata", "The description or the access lists are not valid.")
         # ponytail: only the four known keys are kept; extend when the format grows.
         text = "".join(
             f"{key} = {json.dumps(value, ensure_ascii=False)}\n" for key, value in meta.items()
@@ -208,7 +208,7 @@ class Brain:
             if tomllib.loads(text) != meta:
                 raise ValueError
         except ValueError:
-            raise OIFError("metadata_invalida", "La descripción no es válida.") from None
+            raise OIFError("invalid_metadata", "The description is not valid.") from None
         temporary = target / ".oif.toml.tmp"
         temporary.write_text(text, "utf-8")
         os.replace(temporary, target / ".oif.toml")
@@ -231,7 +231,7 @@ class Brain:
     def search(self, who: str, query: str, path: str = "/") -> dict[str, Any]:
         needle = query.casefold().strip()
         if not needle:
-            raise OIFError("busqueda_vacia", "Indicá un texto para buscar.")
+            raise OIFError("empty_query", "Provide text to search for.")
         hits: list[dict[str, Any]] = []
         pending = [path]
         # ponytail: linear scan of readable files; add an index when the brain grows.

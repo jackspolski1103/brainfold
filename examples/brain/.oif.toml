@@ -1,4 +1,3 @@
-description = "Cerebro sintético de Atlas, una organización ficticia de prueba."
-start_here = ["/comun/convenciones.md", "/skills"]
+description = "Synthetic brain of Atlas, a fictional test organization."
+start_here = ["/common/conventions.md", "/skills"]
 read = ["@costs", "@contracts"]
-
