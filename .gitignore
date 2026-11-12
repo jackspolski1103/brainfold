@@ -32,3 +32,5 @@ build/
 *.log
 work/
 tmp/
+node_modules/
+/src/oif/panel/

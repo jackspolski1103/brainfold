@@ -15,14 +15,16 @@ from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
-from starlette.routing import Route
+from starlette.responses import FileResponse, JSONResponse, Response
+from starlette.routing import Mount, Route
+from starlette.staticfiles import StaticFiles
 
 from oif import OIFError, short_name
 from oif.accounts import SESSION_SECONDS, Accounts, User
 from oif.brain import Brain
 
 COOKIE = "oif_session"
+PANEL = Path(__file__).parent / "panel"  # built web panel, present only after `npm run build`
 STATUS = {
     "unauthenticated": 401,
     "forbidden": 403,
@@ -362,7 +364,11 @@ def create_app(
             user = accounts.authenticate(_token(request))
         except OIFError:
             user = None
-        return {"setup_needed": accounts.needs_setup(), "user": user._asdict() if user else None}
+        return {
+            "setup_needed": accounts.needs_setup(),
+            "code_required": bool(public_url),
+            "user": user._asdict() if user else None,
+        }
 
     def address(request: Request) -> str:
         if public_url:  # the last hop is the one our own proxy appended
@@ -530,6 +536,20 @@ def create_app(
             Route("/api/activity", endpoint(activity, admin=True)),
         ]
     )
+    if (PANEL / "index.html").is_file():
+
+        def panel(_request: Request) -> Response:
+            headers = {
+                "Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; "
+                "frame-ancestors 'none'",
+                "X-Content-Type-Options": "nosniff",
+                "Cache-Control": "no-cache",
+            }
+            return FileResponse(PANEL / "index.html", headers=headers)
+
+        app.router.routes.extend(
+            [Mount("/assets", StaticFiles(directory=PANEL / "assets")), Route("/", panel)]
+        )
     return app
 
 

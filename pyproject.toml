@@ -18,6 +18,8 @@ dev = ["pytest>=8.3,<10", "pytest-asyncio>=0.25,<2", "ruff>=0.11,<1"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/oif"]
+# The built web panel is ignored by git but belongs in the package.
+artifacts = ["src/oif/panel/**"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

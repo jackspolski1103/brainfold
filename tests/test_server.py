@@ -45,7 +45,11 @@ def code(response: Any) -> str:
 
 def test_first_account_administers_and_members_join_by_invite(app: Any) -> None:
     admin = TestClient(app)
-    assert admin.get("/api/state").json() == {"setup_needed": True, "user": None}
+    assert admin.get("/api/state").json() == {
+        "setup_needed": True,
+        "code_required": False,
+        "user": None,
+    }
     assert admin.post("/api/setup", json={"email": ADMIN, "password": PASSWORD}).status_code == 200
     assert admin.get("/api/state").json()["user"] == {"email": ADMIN, "role": "admin"}
     # Setup cannot be repeated, and weak passwords are refused.
@@ -400,3 +404,32 @@ async def test_behind_a_public_address_the_server_must_be_claimed_with_its_code(
                 url, json=request, headers=headers | {"Host": "evil.example.test"}
             )
         assert public.status_code == 200 and other.status_code in {400, 403, 421}
+
+
+def test_the_built_panel_is_served_with_a_restrictive_policy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from oif import server
+
+    shutil.copytree(EXAMPLE, tmp_path / "brain")
+    monkeypatch.setattr(server, "PANEL", tmp_path / "missing")
+    assert (
+        TestClient(create_app(tmp_path / "brain", tmp_path / "a.db", git=False))
+        .get("/")
+        .status_code
+        == 404
+    )
+    built = tmp_path / "panel"
+    (built / "assets").mkdir(parents=True)
+    (built / "index.html").write_text("<div id=root></div>")
+    (built / "assets" / "app.js").write_text("console.log(1)")
+    monkeypatch.setattr(server, "PANEL", built)
+    client = TestClient(create_app(tmp_path / "brain", tmp_path / "b.db", git=False))
+    page = client.get("/")
+    assert (
+        page.status_code == 200 and "default-src 'self'" in page.headers["content-security-policy"]
+    )
+    assert "frame-ancestors 'none'" in page.headers["content-security-policy"]
+    assert client.get("/assets/app.js").status_code == 200
+    assert client.get("/assets/../index.html").status_code in {200, 404}  # never outside the panel
+    assert client.get("/api/state").json()["code_required"] is False

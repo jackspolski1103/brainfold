@@ -6,3 +6,5 @@ tests
 docs
 examples
 *.db
+web/node_modules
+src/oif/panel

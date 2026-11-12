@@ -343,7 +343,15 @@ class Brain:
             entries.append(entry)
         start = max(0, offset)
         result = {
-            **({"read": meta.get("read"), "write": meta.get("write")} if manage else {}),
+            **(
+                {
+                    "read": meta.get("read"),
+                    "write": meta.get("write"),
+                    "guide": meta.get("start_here", []),
+                }
+                if manage
+                else {}
+            ),
             "path": path,
             "description": meta.get("description", ""),
             "start_here": [f"{path.rstrip('/')}/{item}" for item in meta.get("start_here", [])],

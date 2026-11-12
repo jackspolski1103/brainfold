@@ -7,7 +7,7 @@ Decisions are recorded when the author confirms them. A later change keeps the h
 | [0000 Superseded decisions](0000-superseded-decisions.md) | Historical summary |
 | [0007 Harness-agnostic shared brain](0007-harness-agnostic-brain.md) | Accepted |
 | [0008 Bounded scope](0008-bounded-scope.md) | Accepted; its "no review engine" rule still holds |
-| [0009 Web panel and own accounts](0009-panel-and-accounts.md) | Accepted; the panel UI is not built |
+| [0009 Web panel and own accounts](0009-panel-and-accounts.md) | Accepted; first version of the panel built |
 | [0010 Core plan](0010-core-plan.md) | Accepted; phase 1 in progress |
 
 ## Pending
