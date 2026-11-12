@@ -6,7 +6,7 @@ OIF is an MCP server that turns a folder into a team's shared brain: files with 
 
 ## Status
 
-Development implementation. What works today: the MCP server over a folder on disk, read and write permissions per folder, file operations with conflict detection, folder guidance written by agents, personal folders, text search, skills delivered to each agent through `use_skill`, a learnings log, email and password accounts, personal tokens, groups, an activity log, and the JSON API for the future panel. **The web interface does not exist yet.** The server listens on loopback only. Example data is synthetic. The plan in progress is [docs/designs/core-permissioned-memory.md](docs/designs/core-permissioned-memory.md).
+Development implementation. What works today: the MCP server over a folder on disk, read and write permissions per folder, file operations with conflict detection, files of any type through `oif put` and `oif get`, history and restore, folder guidance written by agents, personal folders, text search, skills delivered to each agent through `use_skill`, a learnings log, email and password accounts, personal tokens, groups, an activity log, and the JSON API for the future panel. **The web interface does not exist yet.** The server listens on loopback only. Example data is synthetic. The plan in progress is [docs/designs/core-permissioned-memory.md](docs/designs/core-permissioned-memory.md).
 
 ## Try it
 
@@ -24,7 +24,14 @@ curl -b cookies.txt -H "$J" -d '{"name":"claude code"}' $U/api/tokens   # shows 
 claude mcp add --transport http oif $U/mcp --header "Authorization: Bearer <token>"
 ```
 
-MCP tools: `list`, `read`, `write`, `edit`, `append`, `move`, `delete`, `create_folder`, `describe_folder`, `search`, `list_learnings`, `use_skill`.
+MCP tools: `list`, `read`, `write`, `edit`, `append`, `move`, `delete`, `create_folder`, `describe_folder`, `search`, `history`, `restore`, `list_learnings`, `use_skill`.
+
+Files of any type (a manual, a spreadsheet) go through the command line, which reads `OIF_URL` and `OIF_TOKEN` from the environment or from `~/.config/oif/config.toml` (mode 0600):
+
+```bash
+oif put salaries.xlsx /hr/salaries.xlsx
+oif get /hr/salaries.xlsx ./salaries.xlsx
+```
 
 ## Brain format
 

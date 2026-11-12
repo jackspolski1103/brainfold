@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -23,10 +24,39 @@ def groups() -> dict[str, list[str]]:
     return {"costs": [ALICE, REVIEWER], "contracts": [BOB, REVIEWER]}
 
 
+class Journal:
+    """In-memory stand-in for the revision records kept by the accounts database."""
+
+    def __init__(self) -> None:
+        self.rows: list[dict] = []
+        self.joined: dict[str, float] = {}
+
+    def add_revision(self, path, commit, author, kind, readers, version) -> None:
+        row = {"id": len(self.rows) + 1, "path": path, "commit": commit, "author": author}
+        self.rows.append(
+            row | {"at": time.time(), "kind": kind, "readers": readers, "version": version}
+        )
+
+    def revisions(self, path: str) -> list[dict]:
+        return [row for row in self.rows if row["path"] == path]
+
+    def created(self, email: str) -> float:
+        return self.joined.get(email, 0.0)
+
+
 @pytest.fixture
-def brain(tmp_path: Path, groups: dict[str, list[str]]) -> Brain:
+def journal() -> Journal:
+    return Journal()
+
+
+@pytest.fixture
+def brain(tmp_path: Path, groups: dict[str, list[str]], journal: Journal) -> Brain:
     shutil.copytree(EXAMPLE, tmp_path / "brain")
-    return Brain(tmp_path / "brain", lambda: groups, ALIASES.get)
+    return Brain(tmp_path / "brain", lambda: groups, ALIASES.get, journal=journal)
+
+
+def changes(brain: Brain, who: str, path: str) -> list[str]:
+    return [row["change"] for row in brain.history(who, path)["revisions"]]
 
 
 def paths(listing: dict) -> list[str]:
@@ -281,6 +311,10 @@ def test_every_mutating_tool_is_denied_in_every_situation_without_write(
         (brain.delete, (who, file, version)),
         (brain.create_folder, (who, f"{folder}/new", "d")),
         (brain.describe_folder, (who, folder, "d")),
+        (brain.move, (who, folder, f"{folder}-moved")),
+        (brain.delete, (who, folder)),
+        (brain.restore, (who, file, 1)),
+        (brain.put_file, (who, file, brain.root / "missing-upload", None)),
     ]
     for call, args in attempts:
         assert code(call, *args) in DENIED | {"conflict"}, (call.__name__, situation)
@@ -290,3 +324,135 @@ def test_every_mutating_tool_is_denied_in_every_situation_without_write(
         if path.is_file() and ".git" not in path.parts
     }
     assert after == before
+
+
+def test_history_and_restore_undo_changes_and_deletions(brain: Brain) -> None:
+    path = "/projects/costs/plan.md"
+    first = brain.write(ALICE, path, "v1")
+    second = brain.write(REVIEWER, path, "v2", first["version"])
+    brain.delete(ALICE, path, second["version"])
+    assert changes(brain, ALICE, path) == ["write", "write", "delete"]
+    revisions = brain.history(REVIEWER, path)["revisions"]
+    assert [row["author"] for row in revisions] == [ALICE, REVIEWER, ALICE]
+    assert set(revisions[0]) == {"revision", "author", "date", "change"}  # no content, no paths
+    assert code(brain.restore, ALICE, path, revisions[2]["revision"]) == "no_history"  # a delete
+    restored = brain.restore(ALICE, path, revisions[0]["revision"])
+    assert brain.read(ALICE, path)["content"] == "v1" and restored["versioned"]
+    assert code(brain.restore, ALICE, path, revisions[1]["revision"]) == "already_exists"
+    brain.restore(ALICE, path, revisions[1]["revision"], restored["version"])
+    assert brain.read(ALICE, path)["content"] == "v2"
+    assert code(brain.history, BOB, path) == "no_history"
+    assert code(brain.history, ALICE, "/projects/costs/never.md") == "no_history"
+    other = brain.write(ALICE, "/projects/costs/other.md", "x")
+    assert other and code(
+        brain.restore, ALICE, "/projects/costs/other.md", revisions[0]["revision"]
+    ) == ("no_history")
+    # A file that predates the records gets a baseline, so its first change is undoable.
+    original = brain.read(ALICE, "/projects/costs/process.md")["content"]
+    brain.edit(ALICE, "/projects/costs/process.md", "To analyze costs", "CHANGED")
+    process = brain.history(ALICE, "/projects/costs/process.md")["revisions"]
+    assert [row["change"] for row in process] == ["baseline", "edit"]
+    current = brain.read(ALICE, "/projects/costs/process.md")["version"]
+    brain.restore(ALICE, "/projects/costs/process.md", process[0]["revision"], current)
+    assert brain.read(ALICE, "/projects/costs/process.md")["content"] == original
+
+
+def test_history_never_reveals_what_the_caller_could_not_read_then(
+    brain: Brain, journal: Journal
+) -> None:
+    secret = "/projects/costs/secret"
+    brain.create_folder(REVIEWER, secret, "Restricted")
+    brain.set_access(CARLA, secret, "Restricted", [], [REVIEWER], [REVIEWER])
+    brain.write(REVIEWER, f"{secret}/plan.md", "for the reviewer only")
+    old = journal.rows[-1]["id"]
+    shutil.rmtree(brain.root / "projects" / "costs" / "secret")  # an administrator, by hand
+    # The path is reused by someone who could never read the old content.
+    brain.create_folder(ALICE, secret, "Reused")
+    assert code(brain.history, ALICE, f"{secret}/plan.md") == "no_history"
+    assert code(brain.restore, ALICE, f"{secret}/plan.md", old) == "no_history"
+    brain.write(ALICE, f"{secret}/plan.md", "new")
+    assert changes(brain, ALICE, f"{secret}/plan.md") == ["write"]
+    assert changes(brain, REVIEWER, f"{secret}/plan.md") == ["write", "write"]
+    # Widening read later does not open earlier revisions either.
+    brain.write(BOB, "/projects/contracts/deal.md", "contracts only")
+    brain.set_access(
+        CARLA, "/projects/contracts", "", [], ["@contracts", ALICE], ["@contracts", ALICE]
+    )
+    assert brain.read(ALICE, "/projects/contracts/deal.md")["content"]
+    assert code(brain.history, ALICE, "/projects/contracts/deal.md") == "no_history"
+    # A grant by email does not reach back before that account existed.
+    brain.write(ALICE, "/projects/contracts/mine.md", "after the grant")
+    assert changes(brain, ALICE, "/projects/contracts/mine.md") == ["write"]
+    journal.joined[ALICE] = time.time() + 60  # the email now belongs to a newer account
+    assert code(brain.history, ALICE, "/projects/contracts/mine.md") == "no_history"
+
+
+def test_folders_move_whole_or_not_at_all_and_only_empty_ones_are_deleted(brain: Brain) -> None:
+    brain.create_folder(ALICE, "/projects/costs/q3", "Third quarter", ["a.md"])
+    brain.write(ALICE, "/projects/costs/q3/a.md", "a")
+    brain.write(ALICE, "/projects/costs/q3/deep/b.md", "b")
+    assert code(brain.delete, ALICE, "/projects/costs/q3") == "folder_not_empty"
+    assert code(brain.move, ALICE, "/projects/costs/q3", "/projects/costs/q3/inside") == (
+        "folder_not_movable"
+    )
+    assert code(brain.move, ALICE, "/projects/costs/q3", "/projects/costs/q3") == "already_exists"
+    # Hidden content, or access declared by an administrator, keeps a folder where it is.
+    hidden = brain.root / "projects" / "costs" / "q3" / "deep" / ".secret"
+    hidden.write_text("x")
+    assert (
+        code(brain.move, ALICE, "/projects/costs/q3", "/projects/costs/q4") == "folder_not_movable"
+    )
+    hidden.unlink()
+    brain.set_access(CARLA, "/projects/costs/q3/deep", "", [], [REVIEWER], None)
+    assert code(brain.move, REVIEWER, "/projects/costs/q3", "/projects/costs/q4") == (
+        "folder_not_movable"
+    )
+    assert (brain.root / "projects" / "costs" / "q3" / "a.md").exists()
+    brain.set_access(CARLA, "/projects/costs/q3/deep", "", [], None, None)
+
+    moved = brain.move(ALICE, "/projects/costs/q3", "/projects/costs/archive/q3")
+    assert moved["versioned"]
+    assert brain.list(ALICE, "/projects/costs/archive/q3")["start_here"] == [
+        "/projects/costs/archive/q3/a.md"
+    ]
+    assert brain.read(ALICE, "/projects/costs/archive/q3/deep/b.md")["content"] == "b"
+    assert changes(brain, ALICE, "/projects/costs/archive/q3/a.md") == ["move_in"]
+
+    brain.ensure_home(ALICE)
+    assert (
+        code(brain.move, ALICE, "/people/alice-1a2b", "/projects/costs/me") == "folder_not_movable"
+    )
+    assert code(brain.delete, ALICE, "/people/alice-1a2b") == "folder_not_movable"
+    brain.create_folder(ALICE, "/projects/costs/empty", "Created by mistake")
+    assert brain.delete(ALICE, "/projects/costs/empty")["versioned"]
+    assert "/projects/costs/empty" not in paths(brain.list(ALICE, "/projects/costs"))
+    # Emptying a folder with declared access does not let an agent remove its restriction.
+    brain.create_folder(ALICE, "/projects/costs/locked", "Locked")
+    brain.set_access(CARLA, "/projects/costs/locked", "Locked", [], ["@costs"], ["@costs"])
+    assert code(brain.delete, ALICE, "/projects/costs/locked") == "forbidden"
+
+
+def test_files_of_any_type_are_stored_with_the_same_rules(brain: Brain, tmp_path: Path) -> None:
+    def upload(who: str, path: str, data: bytes, version: str | None = None) -> dict:
+        source = brain.root / ".upload-test.oif-tmp"
+        source.write_bytes(data)
+        return brain.put_file(who, path, source, version)
+
+    sheet = bytes(range(256)) * 4
+    stored = upload(ALICE, "/projects/costs/salaries.xlsx", sheet)
+    assert brain.download(REVIEWER, "/projects/costs/salaries.xlsx") == (sheet, stored["version"])
+    seen = brain.read(ALICE, "/projects/costs/salaries.xlsx")
+    assert seen["kind"] == "binary" and "oif get /projects/costs/salaries.xlsx" in seen["fetch"]
+    assert code(brain.download, BOB, "/projects/costs/salaries.xlsx") == "unavailable"
+    assert code(upload, ALICE, "/projects/costs/salaries.xlsx", b"new") == "already_exists"
+    assert code(upload, ALICE, "/projects/costs/salaries.xlsx", b"new", "0" * 64) == "conflict"
+    upload(ALICE, "/projects/costs/salaries.xlsx", b"new", stored["version"])
+    assert code(upload, BOB, "/projects/costs/x.bin", b"x") == "unavailable"
+    assert code(upload, ALICE, "/projects/costs/k/SKILL.md", b"not a skill") == "invalid_skill"
+    brain.max_file_bytes = 10
+    assert code(upload, ALICE, "/projects/costs/big.bin", b"x" * 11) == "file_too_large"
+    # An earlier binary version comes back with restore.
+    first = brain.history(ALICE, "/projects/costs/salaries.xlsx")["revisions"][0]["revision"]
+    current = brain.download(ALICE, "/projects/costs/salaries.xlsx")[1]
+    brain.restore(ALICE, "/projects/costs/salaries.xlsx", first, current)
+    assert brain.download(ALICE, "/projects/costs/salaries.xlsx")[0] == sheet

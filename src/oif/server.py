@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextvars
+import secrets
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -19,7 +20,15 @@ from oif.accounts import SESSION_SECONDS, Accounts, User
 from oif.brain import Brain
 
 COOKIE = "oif_session"
-STATUS = {"unauthenticated": 401, "forbidden": 403, "unavailable": 404, "conflict": 409}
+STATUS = {
+    "unauthenticated": 401,
+    "forbidden": 403,
+    "write_denied": 403,
+    "unavailable": 404,
+    "conflict": 409,
+    "already_exists": 409,
+    "file_too_large": 413,
+}
 SKILLS_IN_INSTRUCTIONS = 12
 
 INSTRUCTIONS = (
@@ -61,7 +70,7 @@ def create_app(
             "invalid_configuration", "The accounts database must be outside the brain folder."
         )
     accounts = Accounts(database)
-    brain = Brain(root, accounts.groups, accounts.alias, git=git)
+    brain = Brain(root, accounts.groups, accounts.alias, git=git, journal=accounts)
 
     def act(actor: str, action: str, path: str, call: Callable[[], Any]) -> Any:
         """Run one brain operation and record it, with whether git kept the change."""
@@ -144,8 +153,12 @@ def create_app(
         return await tool(ctx, "append", path, lambda who: brain.append(who, path, content))
 
     @server.tool()
-    async def move(ctx: Context, source: str, destination: str, version: str) -> dict[str, Any]:
-        """Move or rename a file. Needs write permission on both sides and its `version`."""
+    async def move(
+        ctx: Context, source: str, destination: str, version: str | None = None
+    ) -> dict[str, Any]:
+        """Move or rename a file (pass its `version`) or a whole folder. Needs write
+        permission on both sides. A folder with access set by an administrator, or with
+        hidden content, cannot be moved. History does not follow a move."""
         return await tool(
             ctx,
             "move",
@@ -154,9 +167,26 @@ def create_app(
         )
 
     @server.tool()
-    async def delete(ctx: Context, path: str, version: str) -> dict[str, Any]:
-        """Delete a file, passing the `version` you last read."""
+    async def delete(ctx: Context, path: str, version: str | None = None) -> dict[str, Any]:
+        """Delete a file (pass the `version` you last read) or an empty folder. A deleted
+        file can be brought back with history and restore."""
         return await tool(ctx, "delete", path, lambda who: brain.delete(who, path, version))
+
+    @server.tool()
+    async def history(ctx: Context, path: str) -> dict[str, Any]:
+        """Who changed a file and when, including a file that was deleted. Returns revision
+        numbers for restore. No content and no other paths."""
+        return await tool(ctx, "history", path, lambda who: brain.history(who, path))
+
+    @server.tool()
+    async def restore(
+        ctx: Context, path: str, revision: int, version: str | None = None
+    ) -> dict[str, Any]:
+        """Bring a file back to one of its revisions. Pass the current `version` if the
+        file exists."""
+        return await tool(
+            ctx, "restore", path, lambda who: brain.restore(who, path, revision, version)
+        )
 
     @server.tool()
     async def create_folder(
@@ -396,6 +426,49 @@ def create_app(
     def activity(request: Request, _user: User, _body: dict) -> dict[str, Any]:
         return {"activity": accounts.activity(int(request.query_params.get("limit", 200)))}
 
+    async def files(request: Request) -> Response:
+        """Upload and download files of any type. Bearer only: never the panel cookie, so
+        a file opened in an administrator's browser cannot act with their session."""
+        path = "/" + request.path_params["path"]
+        try:
+            actor = accounts.authenticate(_bearer(request)).email
+            if request.method != "PUT":
+                data, version = await run_in_threadpool(
+                    act, actor, "download", path, lambda: brain.download(actor, path)
+                )
+                headers = {
+                    "ETag": f'"{version}"',
+                    "Content-Disposition": "attachment",
+                    "X-Content-Type-Options": "nosniff",
+                }
+                return Response(data, media_type="application/octet-stream", headers=headers)
+            # The body is received outside the brain lock, into a file the server cleans up.
+            temporary = brain.root / f".upload-{secrets.token_hex(8)}.oif-tmp"
+            try:
+                received = 0
+                with temporary.open("wb") as out:
+                    async for chunk in request.stream():
+                        received += len(chunk)
+                        if received > brain.max_file_bytes:
+                            raise OIFError("file_too_large", "The file exceeds the upload limit.")
+                        out.write(chunk)
+                version = request.headers.get("if-match", "").strip('"') or None
+                result = await run_in_threadpool(
+                    act,
+                    actor,
+                    "upload",
+                    path,
+                    lambda: brain.put_file(actor, path, temporary, version),
+                )
+            finally:
+                temporary.unlink(missing_ok=True)
+            return JSONResponse(result)
+        except OIFError as error:
+            return JSONResponse(
+                {"error": {"code": error.code, "message": error.message}},
+                status_code=STATUS.get(error.code, 400),
+            )
+
     app = server.streamable_http_app()
     mcp_asgi = app.router.routes[0].app  # the /mcp endpoint registered by FastMCP
 
@@ -408,6 +481,7 @@ def create_app(
     app.router.routes[0].app = with_bearer
     app.router.routes.extend(
         [
+            Route("/files/{path:path}", files, methods=["GET", "PUT"]),
             Route("/api/health", endpoint(health, public=True)),
             Route("/api/state", endpoint(state, public=True)),
             Route("/api/setup", endpoint(setup, public=True), methods=["POST"]),

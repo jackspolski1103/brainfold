@@ -48,6 +48,14 @@ ALTER TABLE users ADD COLUMN alias TEXT;
 CREATE TABLE aliases(alias TEXT PRIMARY KEY, email TEXT NOT NULL);
 ALTER TABLE activity ADD COLUMN versioned INTEGER;
 """,
+    """
+ALTER TABLE users ADD COLUMN created REAL NOT NULL DEFAULT 0;
+CREATE TABLE retired_groups(name TEXT PRIMARY KEY);
+CREATE TABLE revisions(
+  id INTEGER PRIMARY KEY, path TEXT NOT NULL, commit_id TEXT NOT NULL, author TEXT NOT NULL,
+  at REAL NOT NULL, kind TEXT NOT NULL, readers TEXT NOT NULL, version TEXT);
+CREATE INDEX revisions_path ON revisions(path);
+""",
 )
 
 
@@ -126,8 +134,8 @@ class Accounts:
             if not self.needs_setup():
                 raise OIFError("already_set_up", "The server already has an administrator.")
             self._run(
-                "INSERT INTO users(email, role, password) VALUES (?, 'admin', ?)",
-                *(_email(email), _password(password)),
+                "INSERT INTO users(email, role, password, created) VALUES (?, 'admin', ?, ?)",
+                *(_email(email), _password(password), time.time()),
             )
             self._assign_alias(_email(email))
         return _email(email)
@@ -139,8 +147,8 @@ class Accounts:
         try:
             with self._lock:
                 self._run(
-                    "INSERT INTO users(email, role, invite) VALUES (?, ?, ?)",
-                    *(_email(email), role, _digest(token)),
+                    "INSERT INTO users(email, role, invite, created) VALUES (?, ?, ?, ?)",
+                    *(_email(email), role, _digest(token), time.time()),
                 )
                 self._assign_alias(_email(email))
         except sqlite3.IntegrityError:
@@ -190,6 +198,11 @@ class Accounts:
         if not GROUP.fullmatch(name) or not isinstance(members, list):
             raise OIFError("invalid_group", "The group name or its members are not valid.")
         with self._lock:
+            if self._run("SELECT 1 FROM retired_groups WHERE name = ?", name):
+                # Old revisions name this group; new members must not inherit its history.
+                raise OIFError("invalid_group", "That group name was retired. Pick another.")
+            if not members and name in self.groups():
+                self._run("INSERT INTO retired_groups VALUES (?)", name)
             try:
                 self._run("BEGIN")
                 self._run("DELETE FROM memberships WHERE grp = ?", name)
@@ -260,6 +273,30 @@ class Accounts:
 
     def revoke(self, email: str, token_id: int) -> None:
         self._run("DELETE FROM tokens WHERE id = ? AND email = ?", token_id, email)
+
+    # --- revisions (the brain's journal) -----------------------------------------
+
+    def add_revision(
+        self, path: str, commit: str, author: str, kind: str, readers: str, version: str | None
+    ) -> None:
+        self._run(
+            "INSERT INTO revisions(path, commit_id, author, at, kind, readers, version) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            *(path, commit, author, time.time(), kind, readers, version),
+        )
+
+    def revisions(self, path: str) -> list[dict[str, Any]]:
+        keys = ("id", "commit", "author", "at", "kind", "readers", "version")
+        rows = self._run(
+            "SELECT id, commit_id, author, at, kind, readers, version FROM revisions "
+            "WHERE path = ? ORDER BY id",
+            path,
+        )
+        return [dict(zip(keys, row, strict=True)) for row in rows]
+
+    def created(self, email: str) -> float:
+        rows = self._run("SELECT created FROM users WHERE email = ?", email)
+        return rows[0][0] if rows else float("inf")
 
     # --- activity ----------------------------------------------------------------
 

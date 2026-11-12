@@ -257,3 +257,96 @@ def test_a_removed_member_never_gets_the_old_personal_folder_back(tmp_path: Path
     # A database created before aliases existed is migrated in place.
     reopened = Accounts(tmp_path / "oif.db")
     assert reopened.alias(ADMIN) == accounts.alias(ADMIN)
+
+
+async def test_files_travel_over_http_with_a_token_and_never_with_the_panel_cookie(
+    team: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import httpx
+
+    from oif import cli
+
+    app, accounts, tokens = team
+    sheet = bytes(range(256))
+    async with running(app) as url:
+        base = url.removesuffix("/mcp")
+        alice = {"Authorization": f"Bearer {tokens[ALICE]}"}
+        async with httpx.AsyncClient(base_url=base) as http:
+            target = "/files/projects/costs/salaries.xlsx"
+            stored = (await http.put(target, content=sheet, headers=alice)).json()
+            assert (await http.put(target, content=b"x", headers=alice)).status_code == 409
+            fetched = await http.get(target, headers=alice)
+            assert fetched.content == sheet and fetched.headers["etag"] == f'"{stored["version"]}"'
+            assert fetched.headers["content-disposition"] == "attachment"
+            assert fetched.headers["x-content-type-options"] == "nosniff"
+            assert fetched.headers["content-type"] == "application/octet-stream"
+            replaced = await http.put(
+                target, content=b"\x00v2", headers=alice | {"If-Match": fetched.headers["etag"]}
+            )
+            assert replaced.status_code == 200
+            bob = {"Authorization": f"Bearer {tokens[BOB]}"}
+            assert (await http.get(target, headers=bob)).status_code == 404
+            assert (
+                await http.put("/files/projects/costs/b.bin", content=b"x", headers=bob)
+            ).status_code == 404
+            assert (await http.get(target)).status_code == 401
+            # A logged-in administrator's cookie does not open these routes.
+            await http.post("/api/login", json={"email": ALICE, "password": PASSWORD})
+            assert http.cookies and (await http.get(target)).status_code == 401
+            assert (
+                await http.get("/files/projects/costs/%2e%2e/%2e%2e/.oif.toml", headers=alice)
+            ).status_code == 404
+
+        # The command line reads the server and token from the environment only.
+        monkeypatch.setenv("OIF_URL", base)
+        monkeypatch.setenv("OIF_TOKEN", tokens[ALICE])
+        local = tmp_path / "manual.pdf"
+        local.write_bytes(b"%PDF-1.7 synthetic")
+        run = asyncio.to_thread
+        assert await run(cli.main, ["put", str(local), "/projects/costs/manual.pdf"]) == 0
+        assert await run(cli.main, ["put", str(local), "/projects/costs/manual.pdf"]) == 1
+        assert (
+            await run(cli.main, ["put", "--replace", str(local), "/projects/costs/manual.pdf"]) == 0
+        )
+        assert (
+            await run(cli.main, ["get", "/projects/costs/manual.pdf", str(tmp_path / "back.pdf")])
+            == 0
+        )
+        assert (tmp_path / "back.pdf").read_bytes() == b"%PDF-1.7 synthetic"
+        monkeypatch.setenv("OIF_URL", "http://example.com")
+        assert (
+            await run(cli.main, ["get", "/projects/costs/manual.pdf", str(tmp_path / "no.pdf")])
+            == 1
+        )
+
+        async with harness(url, tokens[ALICE]) as session:
+            failed, seen = await call(session, "read", path="/projects/costs/salaries.xlsx")
+            assert not failed and seen["kind"] == "binary" and "oif get" in seen["fetch"]
+            failed, past = await call(session, "history", path="/projects/costs/salaries.xlsx")
+            assert [row["change"] for row in past["revisions"]] == ["upload", "upload"]
+            version = (await call(session, "read", path="/projects/costs/salaries.xlsx"))[1][
+                "version"
+            ]
+            failed, _ = await call(
+                session,
+                "restore",
+                path="/projects/costs/salaries.xlsx",
+                revision=past["revisions"][0]["revision"],
+                version=version,
+            )
+            assert not failed
+        async with httpx.AsyncClient(base_url=base) as http:
+            assert (await http.get(target, headers=alice)).content == sheet
+    assert not list((tmp_path / "brain").glob(".upload-*"))
+    actions = {row["action"] for row in accounts.activity()}
+    assert {"upload", "download", "history", "restore"} <= actions
+
+
+def test_a_retired_group_name_cannot_be_reused(tmp_path: Path) -> None:
+    accounts = Accounts(tmp_path / "oif.db")
+    accounts.setup(ADMIN, PASSWORD)
+    accounts.set_group("finance", [ADMIN])
+    accounts.set_group("finance", [])
+    with pytest.raises(OIFError) as error:
+        accounts.set_group("finance", [ADMIN])
+    assert error.value.code == "invalid_group"

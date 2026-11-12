@@ -105,9 +105,13 @@ class Brain:
         groups: Callable[[], Mapping[str, Sequence[str]]],
         alias: Callable[[str], str | None] = lambda who: None,
         git: bool = True,
+        journal: Any = None,
+        max_file_bytes: int = 25 * 1024 * 1024,
     ) -> None:
         self.groups = groups
         self.alias = alias
+        self.journal = journal  # revision records: add_revision, revisions, created
+        self.max_file_bytes = max_file_bytes
         self.root = root.resolve(strict=True)
         if not self.root.is_dir():
             raise OIFError("invalid_configuration", "The brain root is not a folder.")
@@ -199,7 +203,8 @@ class Brain:
 
     # --- git ------------------------------------------------------------------------
 
-    def _git(self, *args: str, author: str = "oif") -> bool:
+    def _git_output(self, *args: str, author: str = "oif") -> bytes | None:
+        """Run git with no user configuration, hooks, signing or prompt, and a time limit."""
         env = {
             **os.environ,
             "GIT_CONFIG_GLOBAL": os.devnull,
@@ -210,19 +215,20 @@ class Brain:
         command += ["-c", f"user.email={author}", "-c", "commit.gpgsign=false"]
         command += ["-c", f"core.hooksPath={os.devnull}", *args]
         try:
-            return (
-                subprocess.run(
-                    command,
-                    env=env,
-                    stdin=subprocess.DEVNULL,
-                    capture_output=True,
-                    timeout=GIT_TIMEOUT,
-                    check=False,
-                ).returncode
-                == 0
+            done = subprocess.run(
+                command,
+                env=env,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                timeout=GIT_TIMEOUT,
+                check=False,
             )
         except (OSError, subprocess.TimeoutExpired):
-            return False
+            return None
+        return done.stdout if done.returncode == 0 else None
+
+    def _git(self, *args: str, author: str = "oif") -> bool:
+        return self._git_output(*args, author=author) is not None
 
     def _start_git(self) -> bool:
         if (self.root / ".git" / "index.lock").exists():
@@ -248,12 +254,49 @@ class Brain:
         self.unversioned += not done
         return done
 
+    def _snapshot(self, target: Path) -> str:
+        """Who could read this path right now: stored with each revision."""
+        parts = self._parts(target)
+        if parts[:1] == (PEOPLE,) and len(parts) > 1:
+            return json.dumps({"owner": parts[1]})
+        folders = [self.root]
+        for part in parts:
+            if (folders[-1] / part).is_dir():
+                folders.append(folders[-1] / part)
+        reads = [meta["read"] for meta in map(self._meta, folders) if "read" in meta]
+        return json.dumps({"reads": reads})
+
+    def _record(self, author: str, records: Sequence[tuple[Path, str, str | None, str]]) -> None:
+        commit = self._git_output("rev-parse", "HEAD") if self.journal and self.git else None
+        if commit:
+            for target, kind, version, readers in records:
+                self.journal.add_revision(
+                    self._path(target), commit.decode().strip(), author, kind, readers, version
+                )
+
+    def _save(
+        self, who: str, message: str, records: Sequence[tuple[Path, str, str | None]]
+    ) -> bool:
+        """Commit a change and, only if git kept it, add its revision records."""
+        snapshots = [(*record, self._snapshot(record[0])) for record in records]
+        done = self._commit(who, message, *(record[0] for record in records))
+        if done:
+            self._record(who, snapshots)
+        return done
+
     def _baseline(self, target: Path) -> None:
-        """Keep a hand edit or a crash leftover in history before changing the file."""
-        if self.git and target.is_file():
-            relative = str(target.relative_to(self.root))
-            self._git("add", "--", relative)
-            self._git("commit", "-q", "-m", f"oif: baseline {relative}", "--", relative)
+        """Before changing a file, make sure its current content is in history: a hand
+        edit, a crash leftover, or a file that predates the revision records."""
+        if not (self.git and target.is_file()):
+            return
+        relative = str(target.relative_to(self.root))
+        self._git("add", "--", relative)
+        self._git("commit", "-q", "-m", f"oif: baseline {relative}", "--", relative)
+        if self.journal and target.name != ".oif.toml":
+            current = _version(target.read_bytes())
+            rows = self.journal.revisions(self._path(target))
+            if not rows or rows[-1]["version"] != current:
+                self._record("oif", [(target, "baseline", current, self._snapshot(target))])
 
     def _clean(self) -> None:
         for leftover in self.root.rglob(".*.oif-tmp"):
@@ -326,7 +369,10 @@ class Brain:
         _, data = self._bytes(who, path)
         result: dict[str, Any] = {"path": path, "version": _version(data), "size": len(data)}
         if len(data) > MAX_TEXT_BYTES or not _is_text(data):
-            return result | {"kind": "binary"}
+            return result | {
+                "kind": "binary",
+                "fetch": f"Run in a shell: oif get {path} <local destination>",
+            }
         lines = data.decode("utf-8").splitlines(keepends=True)
         start = max(0, offset)
         chosen: list[str] = []
@@ -456,11 +502,9 @@ class Brain:
         self._baseline(target)
         self._store(target, data)
         path = self._path(target)
-        return {
-            "path": path,
-            "version": _version(data),
-            "versioned": self._commit(who, f"{action} {path}", target),
-        }
+        version = _version(data)
+        versioned = self._save(who, f"{action} {path}", [(target, action, version)])
+        return {"path": path, "version": version, "versioned": versioned}
 
     @_locked
     def write(
@@ -508,38 +552,192 @@ class Brain:
             content = f"{LEARNING}{stamp} {who} -->\n{safe}"
         return self._put(who, target, text + content.rstrip("\n") + "\n", "append")
 
+    def _movable(self, folder: Path) -> list[Path]:
+        """Files of a folder an agent may move: nothing hidden, nothing with declared access."""
+        parts = self._parts(folder)
+        if not parts or parts[0] == PEOPLE and len(parts) <= 2:
+            raise OIFError("folder_not_movable", "This folder cannot be moved.")
+        files = []
+        for entry in folder.rglob("*"):
+            if entry.name == ".DS_Store":
+                entry.unlink()
+            elif entry.is_symlink() or (entry.name.startswith(".") and entry.name != ".oif.toml"):
+                raise OIFError("folder_not_movable", "This folder cannot be moved.")
+            elif entry.is_file() and entry.name != ".oif.toml":
+                files.append(entry)
+        for holder in (folder, *(entry for entry in folder.rglob("*") if entry.is_dir())):
+            if {"read", "write"} & self._meta(holder).keys():
+                raise OIFError("folder_not_movable", "This folder cannot be moved.")
+        return files
+
     @_locked
-    def move(self, who: str, source: str, destination: str, version: str) -> dict[str, Any]:
-        """Move a file. Folders move in phase 2 of the plan."""
+    def move(
+        self, who: str, source: str, destination: str, version: str | None = None
+    ) -> dict[str, Any]:
+        """Move a file (with its `version`) or a whole folder. A folder moves only if it
+        holds nothing hidden and no access declared by an administrator. History does not
+        follow a move: each file starts a new history at its new path."""
         origin = self._writable(who, source)
         target = self._writable(who, destination)
-        if origin.is_dir():
-            raise OIFError("folder_not_movable", "Folders cannot be moved yet.")
-        if not origin.is_file():
-            raise _unavailable()
         if target.exists():
             raise OIFError("already_exists", "The destination already exists.")
+        if origin.is_dir():
+            if target.is_relative_to(origin):
+                raise OIFError("folder_not_movable", "A folder cannot move into itself.")
+            files = self._movable(origin)
+            for file in files:
+                self._baseline(file)
+            leaving = [(file, "move_out", None, self._snapshot(file)) for file in files]
+            target.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(origin, target)
+            arriving = [target / file.relative_to(origin) for file in files]
+            versioned = self._commit(who, f"move {source} to {destination}", origin, target)
+            if versioned:
+                self._record(who, leaving)
+                self._record(
+                    who,
+                    [
+                        (file, "move_in", _version(file.read_bytes()), self._snapshot(file))
+                        for file in arriving
+                    ],
+                )
+            return {"path": destination, "versioned": versioned}
+        if not origin.is_file():
+            raise _unavailable()
+        if version is None:
+            raise OIFError("conflict", "Pass the version of the file you are moving.")
         self._check_version(origin, version)
         if target.name == "SKILL.md" and not _front_matter(origin.read_bytes()):
             raise OIFError("invalid_skill", "The file is not a valid SKILL.md.")
         self._baseline(origin)
+        leaving = [(origin, "move_out", None, self._snapshot(origin))]
         target.parent.mkdir(parents=True, exist_ok=True)
         os.replace(origin, target)
         versioned = self._commit(who, f"move {source} to {destination}", origin, target)
+        if versioned:
+            self._record(who, [*leaving, (target, "move_in", version, self._snapshot(target))])
         return {"path": destination, "version": version, "versioned": versioned}
 
     @_locked
-    def delete(self, who: str, path: str, version: str) -> dict[str, Any]:
-        """Delete a file. Until restore exists, only an administrator can recover it with git."""
+    def delete(self, who: str, path: str, version: str | None = None) -> dict[str, Any]:
+        """Delete a file (with its `version`) or an empty folder. A deleted file can be
+        brought back with restore; a folder must be emptied file by file first."""
         target = self._writable(who, path)
         if target.is_dir():
-            raise OIFError("folder_not_movable", "Folders cannot be deleted yet.")
+            meta = target / ".oif.toml"
+            if target == self.root or {"read", "write"} & self._meta(target).keys():
+                raise OIFError("forbidden", "Only an administrator can delete this folder.")
+            (target / ".DS_Store").unlink(missing_ok=True)
+            if any(entry.name != ".oif.toml" for entry in target.iterdir()):
+                raise OIFError("folder_not_empty", "Delete or move its files first.")
+            self._movable(target)  # personal folders themselves stay
+            meta.unlink(missing_ok=True)
+            target.rmdir()
+            return {"path": path, "versioned": self._commit(who, f"delete {path}", meta)}
         if not target.is_file():
             raise _unavailable()
+        if version is None:
+            raise OIFError("conflict", "Pass the version of the file you are deleting.")
         self._check_version(target, version)
         self._baseline(target)
+        snapshot = self._snapshot(target)
         target.unlink()
-        return {"path": path, "versioned": self._commit(who, f"delete {path}", target)}
+        versioned = self._commit(who, f"delete {path}", target)
+        if versioned:
+            self._record(who, [(target, "delete", None, snapshot)])
+        return {"path": path, "versioned": versioned}
+
+    # --- binary files ---------------------------------------------------------------
+
+    @_locked
+    def download(self, who: str, path: str) -> tuple[bytes, str]:
+        data = self._bytes(who, path)[1]
+        return data, _version(data)
+
+    @_locked
+    def put_file(self, who: str, path: str, source: Path, version: str | None) -> dict[str, Any]:
+        """Store an uploaded file of any type. `source` is a temporary file in the root."""
+        target = self._writable(who, path)
+        if target.is_dir() or target == self.root:
+            raise _unavailable()
+        if source.stat().st_size > self.max_file_bytes:
+            raise OIFError("file_too_large", "The file exceeds the upload limit.")
+        self._check_version(target, version)
+        data = source.read_bytes()
+        if target.name == "SKILL.md" and not _front_matter(data):
+            raise OIFError("invalid_skill", "The file is not a valid SKILL.md.")
+        self._baseline(target)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(source, target)
+        digest = _version(data)
+        versioned = self._save(who, f"upload {path}", [(target, "upload", digest)])
+        return {"path": path, "version": digest, "size": len(data), "versioned": versioned}
+
+    # --- history --------------------------------------------------------------------
+
+    def _visible(self, who: str, path: str) -> list[dict[str, Any]]:
+        """Revisions of a path the caller may see: they could read it then and can now."""
+        target = self._real(path)
+        read, write = self._access(who, target)
+        allowed = read if target.is_file() else read and write and target.parent.is_dir()
+        if not (self.journal and self.git and allowed) or target.is_dir():
+            return []
+        visible = []
+        for row in self.journal.revisions(path):
+            snapshot = json.loads(row["readers"])
+            if "owner" in snapshot:
+                seen = snapshot["owner"] == self.alias(who)
+            else:
+                # A direct email grant older than the account belongs to a previous holder.
+                young = row["at"] < self.journal.created(who)
+                seen = bool(snapshot["reads"]) and all(
+                    self._granted(who, [g for g in grants if not (young and g == who)])
+                    for grants in snapshot["reads"]
+                )
+            if seen:
+                visible.append(row)
+        return visible
+
+    @_locked
+    def history(self, who: str, path: str) -> dict[str, Any]:
+        """Who changed this path and when. No content, no other paths, no following moves."""
+        rows = self._visible(who, path)
+        if not rows:
+            raise OIFError("no_history", "There is no history you can see for this path.")
+        return {
+            "path": path,
+            "revisions": [
+                {
+                    "revision": row["id"],
+                    "author": row["author"],
+                    "date": datetime.fromtimestamp(row["at"], UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "change": row["kind"],
+                }
+                for row in rows
+            ],
+        }
+
+    @_locked
+    def restore(
+        self, who: str, path: str, revision: int, version: str | None = None
+    ) -> dict[str, Any]:
+        """Bring a file back to how it was after one of its revisions."""
+        target = self._writable(who, path)
+        row = next((row for row in self._visible(who, path) if row["id"] == revision), None)
+        if row is None or row["kind"] in {"delete", "move_out"} or not target.parent.is_dir():
+            raise OIFError("no_history", "That revision cannot be restored.")
+        self._check_version(target, version)
+        relative = str(target.relative_to(self.root))
+        data = self._git_output("show", f"{row['commit']}:{relative}")
+        if data is None:  # someone rewrote the repository's history
+            raise OIFError("no_history", "That revision is no longer in the repository.")
+        if target.name == "SKILL.md" and not _front_matter(data):
+            raise OIFError("invalid_skill", "That revision is not a valid SKILL.md.")
+        self._baseline(target)
+        self._store(target, data)
+        digest = _version(data)
+        versioned = self._save(who, f"restore {path}", [(target, "restore", digest)])
+        return {"path": path, "version": digest, "versioned": versioned}
 
     # --- folders --------------------------------------------------------------------
 

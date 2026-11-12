@@ -341,15 +341,15 @@ T1 to T11 are phase 1; T12 to T16 are phase 2.
   - Files: examples/brain/, .gitignore
   - Verify: Activity log shows only list and read for the day-one question; answer contains the three fixed facts
   - Done 2026-11-12 on a copy of OIF's own brain (`brain/`, ignored by this repository), with fresh headless Claude Code 2.1.322 sessions for a newly invited account. Day one: asked only "how do we work here?", the answer named `docs/decisions`, `uv run pytest` and the out-of-scope harness; activity showed list, read and one read-only `list_learnings`. Spreading skill: another account wrote `/skills/release-notes/SKILL.md`; the new account asked for release notes without mentioning skills, the agent called `use_skill` first and the output carried the skill's reference code and closing sentence. One run each; frequency was not measured. The example case in `examples/brain/` was translated but not made fuller.
-- [ ] **T12 (P2, human: ~4d / CC: ~2h)** — server — Binary files: byte storage, /files routes with ETag and If-Match, oif put and oif get
+- [x] **T12 (P2, human: ~4d / CC: ~2h)** — server — Binary files: byte storage, /files routes with ETag and If-Match, oif put and oif get
   - Surfaced by: Layer 1 binary files; phase 2
   - Files: src/oif/brain.py, src/oif/server.py, src/oif/cli.py, tests/
   - Verify: Upload to a restricted folder downloads only with an authorized token; cookie rejected
-- [ ] **T13 (P2, human: ~2d / CC: ~1h)** — brain — Folder move and empty-folder delete
+- [x] **T13 (P2, human: ~2d / CC: ~1h)** — brain — Folder move and empty-folder delete
   - Surfaced by: E3; D12, D15
   - Files: src/oif/brain.py, src/oif/server.py, tests/
   - Verify: Move with one hidden entry or declared access changes nothing; non-empty delete changes nothing
-- [ ] **T14 (P2, human: ~5d / CC: ~3h)** — accounts — Revision records with read-list snapshot, history, restore, group-name and email reuse guards
+- [x] **T14 (P2, human: ~5d / CC: ~3h)** — accounts — Revision records with read-list snapshot, history, restore, group-name and email reuse guards
   - Surfaced by: E7; D13; SAFETY-FIXES
   - Files: src/oif/accounts.py, src/oif/brain.py, src/oif/server.py, tests/
   - Verify: Path reuse and widened read expose no earlier revision; deleted file restores with matching content
