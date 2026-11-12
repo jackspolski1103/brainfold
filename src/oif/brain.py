@@ -396,6 +396,13 @@ class Brain:
             "truncated": end < len(lines) or cut,
         }
 
+    def _readable(self, who: str) -> list[str]:
+        """Every file the caller can read; nothing if they cannot even read the root."""
+        try:
+            return self._walk(who)
+        except OIFError:
+            return []
+
     def _walk(self, who: str, path: str = "/") -> list[str]:
         """Every file the caller can read under a folder."""
         files: list[str] = []
@@ -442,7 +449,7 @@ class Brain:
         """Every readable, valid SKILL.md with the name and description of its front matter."""
         found = []
         # ponytail: walks the readable tree on each call; fine to a few thousand files.
-        for path in self._walk(who):
+        for path in self._readable(who):
             if path.endswith("/SKILL.md"):
                 fields = _front_matter(self._bytes(who, path)[1])
                 if fields:
@@ -453,7 +460,7 @@ class Brain:
     def learnings(self, who: str, limit: int = 50) -> dict[str, Any]:
         """Newest entries of every readable LEARNINGS.md. Attribution is advisory."""
         entries = []
-        for path in self._walk(who):
+        for path in self._readable(who):
             if not path.endswith("/LEARNINGS.md"):
                 continue
             data = self._bytes(who, path)[1]

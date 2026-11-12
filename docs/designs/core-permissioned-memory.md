@@ -1,6 +1,6 @@
 # Plan: OIF core, permissioned memory that spreads on its own
 
-Status: scope decided in CEO review (SELECTIVE EXPANSION), 2026-11-12; not yet implemented. Branch: main.
+Status: scope decided in CEO review (SELECTIVE EXPANSION), 2026-11-12. Tasks T1 to T15 are implemented on branch `core-phase-1`; T16 (publication) waits for the author's decisions on name, license, remote repository and registry.
 Source design: approved /office-hours design of 2026-11-12 (Spanish original kept outside the repo in the author's local gstack store).
 Approving this plan implies updating `docs/scope.md` and recording a new decision in `docs/decisions/`.
 
@@ -131,7 +131,7 @@ Tool names are English: `list`, `read`, `write`, `edit`, `append`, `move`, `dele
 ## Open questions
 
 1. Answered for Claude Code by spike T1: tool descriptions are deferred and not in context, server instructions are, and a per-identity listing there made a fresh session use a new skill unprompted. Still open: the same check on Codex, and how Claude Code behaves when the listing exceeds the 12 skills carried in the instructions.
-2. Whether the MCP library's host-header check accepts requests forwarded by a proxy when the server binds to loopback. Needs a live check before cross-machine work.
+2. Answered: the MCP library only checks the Host header when told to. The server now always enables that check and allows loopback plus the host of `--public-url`; a test sends both an allowed and a foreign Host, and the container check passed through the proxy.
 
 ## Build order (two phases, author decision D19)
 
@@ -353,10 +353,11 @@ T1 to T11 are phase 1; T12 to T16 are phase 2.
   - Surfaced by: E7; D13; SAFETY-FIXES
   - Files: src/oif/accounts.py, src/oif/brain.py, src/oif/server.py, tests/
   - Verify: Path reuse and widened read expose no earlier revision; deleted file restores with matching content
-- [ ] **T15 (P2, human: ~4d / CC: ~2h)** — deploy — Proxy live check, then --public-url, setup code, throttle key, Dockerfile and compose
+- [x] **T15 (P2, human: ~4d / CC: ~2h)** — deploy — Proxy live check, then --public-url, setup code, throttle key, Dockerfile and compose
   - Surfaced by: E6; D9; open question 2
   - Files: src/oif/cli.py, src/oif/server.py, src/oif/accounts.py, Dockerfile, compose.yaml, tests/
   - Verify: Compose with locally trusted certificate: two accounts over HTTPS; setup without code creates no account
+  - Done 2026-11-12: image built and run with the shipped `compose.yaml` on a spare local port. Over HTTPS through the proxy: health reported git and database up, setup without the printed code answered 403 and with it 200, the session cookie was `Secure`, MCP tool calls were accepted, and the server's own port was not published. Not verified: a real domain and certificate, a second machine, and the container reaching the `healthy` state (it was checked while still `starting`).
 - [ ] **T16 (P3, human: ~1d / CC: ~30min)** — release — CI and publication of package and image, after name, license, remote repository and registry are decided
   - Surfaced by: Distribution; pending author decisions
   - Files: to be determined

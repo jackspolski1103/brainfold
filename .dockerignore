@@ -1,0 +1,8 @@
+.git
+.venv
+.gstack
+brain
+tests
+docs
+examples
+*.db

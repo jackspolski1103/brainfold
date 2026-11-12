@@ -215,10 +215,12 @@ class Accounts:
 
     # --- authentication ----------------------------------------------------------
 
-    def login(self, email: Any, password: Any) -> str:
+    def login(self, email: Any, password: Any, address: str = "") -> str:
+        """`address` is the client's address: one attacker cannot lock an account for all."""
         email = str(email).strip().lower()
         failed = OIFError("invalid_credentials", "Wrong email or password.")
-        count, since = self._failures.get(email, (0, 0.0))
+        key = f"{email}|{address}"
+        count, since = self._failures.get(key, (0, 0.0))
         if count >= MAX_FAILURES and time.time() - since < LOCK_SECONDS:
             raise OIFError("too_many_attempts", "Too many attempts. Try again in a minute.")
         rows = self._run("SELECT password FROM users WHERE email = ?", email)
@@ -227,9 +229,9 @@ class Accounts:
         supplied = _hash(str(password), bytes.fromhex(salt))
         if not expected or not hmac.compare_digest(supplied, expected):
             # ponytail: per-process counter; move to the database when running replicas.
-            self._failures[email] = (count % MAX_FAILURES + 1, time.time())
+            self._failures[key] = (count % MAX_FAILURES + 1, time.time())
             raise failed
-        self._failures.pop(email, None)
+        self._failures.pop(key, None)
         return self.issue(email, "session", "panel", SESSION_SECONDS)[1]
 
     def issue(self, email: str, kind: str, name: Any, ttl: float | None = None) -> tuple[int, str]:

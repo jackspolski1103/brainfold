@@ -28,13 +28,6 @@ def _loopback(host: str) -> bool:
         return False
 
 
-def _host(value: str) -> str:
-    if _loopback(value):
-        return value
-    # ponytail: loopback only; put a TLS reverse proxy in front before lifting this.
-    raise argparse.ArgumentTypeError("The server must listen on loopback.")
-
-
 def _connection() -> tuple[str, str]:
     """Server URL and token from the environment or a private config file. They are
     never accepted as arguments and never printed."""
@@ -100,7 +93,12 @@ def main(argv: list[str] | None = None) -> int:
     serve = commands.add_parser("serve", help="Serve a folder as a shared brain")
     serve.add_argument("--root", type=Path, required=True)
     serve.add_argument("--db", type=Path, default=Path("oif.db"), help="Accounts database")
-    serve.add_argument("--host", type=_host, default="127.0.0.1")
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument(
+        "--public-url",
+        help="https address of the TLS proxy in front of the server; required to listen "
+        "beyond loopback",
+    )
     serve.add_argument("--port", type=int, default=8020)
     put = commands.add_parser("put", help="Upload a file of any type to the brain")
     put.add_argument("file", type=Path)
@@ -121,14 +119,25 @@ def main(argv: list[str] | None = None) -> int:
 
         from oif.server import create_app
 
-        app = create_app(args.root, args.db, host=args.host, port=args.port)
+        public = args.public_url
+        if public and urllib.parse.urlsplit(public).scheme != "https":
+            raise OIFError("invalid_configuration", "--public-url must start with https://")
+        if not public and not _loopback(args.host):
+            raise OIFError(
+                "invalid_configuration",
+                "Listening beyond loopback needs --public-url: run the server behind a proxy "
+                "that terminates TLS.",
+            )
+        app = create_app(args.root, args.db, host=args.host, port=args.port, public_url=public)
     except OIFError as exc:
         print(f"Error ({exc.code}): {exc.message}", file=sys.stderr)
         return 1
     except OSError:
         print("Error: a file or folder does not exist or cannot be read.", file=sys.stderr)
         return 1
-    print(f"OIF brain · MCP at http://{args.host}:{args.port}/mcp · API at /api")
+    print(f"OIF brain · MCP at http://{args.host}:{args.port}/mcp · API at /api", flush=True)
+    if app.state.setup_code:
+        print(f"Setup code for the first account: {app.state.setup_code}", flush=True)
     uvicorn.run(app, host=args.host, port=args.port, access_log=False, log_level="warning")
     return 0
 

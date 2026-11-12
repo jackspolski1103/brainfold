@@ -1,0 +1,45 @@
+# One OIF server behind a proxy that terminates TLS. Exactly one server process:
+# the brain keeps a single lock and an in-memory login throttle.
+#
+#   OIF_DOMAIN=brain.example.com docker compose up -d
+#   docker compose logs oif        # shows the setup code for the first account
+#
+# With OIF_DOMAIN unset it serves https://localhost with the proxy's own certificate
+# authority, which is only useful for a local check.
+services:
+  oif:
+    build: .
+    command:
+      - serve
+      - --root=/brain
+      - --db=/data/oif.db
+      - --host=0.0.0.0
+      - --public-url=https://${OIF_DOMAIN:-localhost}
+    volumes:
+      - brain:/brain   # the shared brain, a git repository
+      - data:/data     # accounts, tokens, activity and revision records
+    expose:
+      - "8020"         # reachable by the proxy only, never published
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8020/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  proxy:
+    image: caddy:2
+    command: caddy reverse-proxy --from ${OIF_DOMAIN:-localhost} --to oif:8020
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - proxy:/data
+    depends_on:
+      - oif
+    restart: unless-stopped
+
+volumes:
+  brain:
+  data:
+  proxy:

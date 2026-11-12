@@ -6,7 +6,7 @@ OIF is an MCP server that turns a folder into a team's shared brain: files with 
 
 ## Status
 
-Development implementation. What works today: the MCP server over a folder on disk, read and write permissions per folder, file operations with conflict detection, files of any type through `oif put` and `oif get`, history and restore, folder guidance written by agents, personal folders, text search, skills delivered to each agent through `use_skill`, a learnings log, email and password accounts, personal tokens, groups, an activity log, and the JSON API for the future panel. **The web interface does not exist yet.** The server listens on loopback only. Example data is synthetic. The plan in progress is [docs/designs/core-permissioned-memory.md](docs/designs/core-permissioned-memory.md).
+Development implementation. What works today: the MCP server over a folder on disk, read and write permissions per folder, file operations with conflict detection, files of any type through `oif put` and `oif get`, history and restore, folder guidance written by agents, personal folders, text search, skills delivered to each agent through `use_skill`, a learnings log, email and password accounts, personal tokens, groups, an activity log, and the JSON API for the future panel. **The web interface does not exist yet.** By default the server listens on loopback only; a compose file runs it behind a TLS proxy for use across machines. Example data is synthetic. The plan in progress is [docs/designs/core-permissioned-memory.md](docs/designs/core-permissioned-memory.md).
 
 ## Try it
 
@@ -32,6 +32,15 @@ Files of any type (a manual, a spreadsheet) go through the command line, which r
 oif put salaries.xlsx /hr/salaries.xlsx
 oif get /hr/salaries.xlsx ./salaries.xlsx
 ```
+
+## Run it for a team
+
+```bash
+OIF_DOMAIN=brain.example.com docker compose up -d
+docker compose logs oif      # prints the setup code needed to create the first account
+```
+
+The server runs behind a proxy that terminates TLS and is never published directly. Creating the first account needs the printed setup code, sent as `"code"` in the `/api/setup` body. This was checked locally with the proxy's own certificate; it has not been run on a real domain yet.
 
 ## Brain format
 

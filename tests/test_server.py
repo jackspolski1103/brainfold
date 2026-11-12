@@ -350,3 +350,53 @@ def test_a_retired_group_name_cannot_be_reused(tmp_path: Path) -> None:
     with pytest.raises(OIFError) as error:
         accounts.set_group("finance", [ADMIN])
     assert error.value.code == "invalid_group"
+
+
+async def test_behind_a_public_address_the_server_must_be_claimed_with_its_code(
+    tmp_path: Path,
+) -> None:
+    shutil.copytree(EXAMPLE, tmp_path / "brain")
+    app = create_app(
+        tmp_path / "brain", tmp_path / "oif.db", public_url="https://brain.example.test"
+    )
+    client = TestClient(app, base_url="http://127.0.0.1")
+    body = {"email": ADMIN, "password": PASSWORD}
+    assert client.post("/api/setup", json=body).status_code == 403
+    assert client.post("/api/setup", json=body | {"code": "guess"}).status_code == 403
+    claimed = client.post("/api/setup", json=body | {"code": app.state.setup_code})
+    assert claimed.status_code == 200 and "Secure" in claimed.headers["set-cookie"]
+    again = {"email": BOB, "password": PASSWORD, "code": app.state.setup_code}
+    assert code(client.post("/api/setup", json=again)) == "already_set_up"
+    # One address failing does not lock the account for everyone else.
+    for _ in range(5):
+        wrong = {"email": ADMIN, "password": "x" * 12}
+        client.post("/api/login", json=wrong, headers={"X-Forwarded-For": "203.0.113.9"})
+    blocked = client.post("/api/login", json=body, headers={"X-Forwarded-For": "203.0.113.9"})
+    assert code(blocked) == "too_many_attempts"
+    assert (
+        client.post(
+            "/api/login", json=body, headers={"X-Forwarded-For": "198.51.100.7"}
+        ).status_code
+        == 200
+    )
+
+    # The MCP endpoint answers for the public host and refuses any other.
+    token = Accounts(tmp_path / "oif.db").issue(ADMIN, "access", "harness")[1]
+    async with running(app) as url:
+        async with harness(url, token) as local:
+            assert not (await call(local, "use_skill", name="propose-skills"))[0]
+        import httpx
+
+        request = {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json, text/event-stream",
+        }
+        async with httpx.AsyncClient() as http:
+            public = await http.post(
+                url, json=request, headers=headers | {"Host": "brain.example.test"}
+            )
+            other = await http.post(
+                url, json=request, headers=headers | {"Host": "evil.example.test"}
+            )
+        assert public.status_code == 200 and other.status_code in {400, 403, 421}

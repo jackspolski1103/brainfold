@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import contextvars
+import hmac
 import secrets
+import urllib.parse
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import anyio
 from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -64,7 +67,11 @@ def create_app(
     host: str = "127.0.0.1",
     port: int = 8020,
     git: bool = True,
+    public_url: str | None = None,
 ) -> Any:
+    """`public_url` means the server sits behind a TLS proxy at that address: cookies are
+    always Secure, the first account needs the printed setup code, and the client address
+    comes from the proxy."""
     if database != ":memory:" and Path(database).resolve().is_relative_to(root.resolve()):
         raise OIFError(
             "invalid_configuration", "The accounts database must be outside the brain folder."
@@ -96,9 +103,22 @@ def create_app(
 
     # --- MCP: what any harness connects to ----------------------------------------
 
+    public_host = urllib.parse.urlsplit(public_url).netloc if public_url else None
+    # Requests for any other Host are refused, which blocks DNS rebinding.
+    hosts = ["127.0.0.1:*", "localhost:*", "[::1]:*", *([public_host] if public_host else [])]
+    setup_code = secrets.token_urlsafe(16) if public_url and accounts.needs_setup() else None
+
     server = FastMCP(
         "OIF brain",
         instructions=INSTRUCTIONS,
+        transport_security=TransportSecuritySettings(
+            enable_dns_rebinding_protection=True,
+            allowed_hosts=hosts,
+            allowed_origins=[
+                *(f"http://{host}" for host in hosts[:3]),
+                *([public_url] if public_url else []),
+            ],
+        ),
         host=host,
         port=port,
         log_level="ERROR",
@@ -324,7 +344,7 @@ def create_app(
             max_age=SESSION_SECONDS,
             httponly=True,
             samesite="strict",
-            secure=request.url.scheme == "https",
+            secure=bool(public_url) or request.url.scheme == "https",
         )
         return response
 
@@ -344,14 +364,23 @@ def create_app(
             user = None
         return {"setup_needed": accounts.needs_setup(), "user": user._asdict() if user else None}
 
+    def address(request: Request) -> str:
+        if public_url:  # the last hop is the one our own proxy appended
+            return request.headers.get("x-forwarded-for", "").split(",")[-1].strip()
+        return request.client.host if request.client else ""
+
     def setup(request: Request, _user: None, body: dict) -> Response:
+        # Behind a public address, only whoever can read the server's output may claim it.
+        given = str(body.get("code", ""))
+        if public_url and not (setup_code and hmac.compare_digest(given, setup_code)):
+            raise OIFError("forbidden", "The setup code printed by the server is required.")
         email = accounts.setup(body["email"], body["password"])
         return signed_in(request, email, accounts.login(email, body["password"]))
 
     def login(request: Request, _user: None, body: dict) -> Response:
         email = str(body["email"]).strip().lower()[:254]
         try:
-            session = accounts.login(email, body["password"])
+            session = accounts.login(email, body["password"], address(request))
         except OIFError:
             accounts.log(email, "login", "", False)
             raise
@@ -470,6 +499,7 @@ def create_app(
             )
 
     app = server.streamable_http_app()
+    app.state.setup_code = setup_code
     mcp_asgi = app.router.routes[0].app  # the /mcp endpoint registered by FastMCP
 
     async def with_bearer(scope: Any, receive: Any, send: Any) -> None:
