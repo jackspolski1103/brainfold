@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import shutil
 import socket
 from collections.abc import AsyncIterator
@@ -14,6 +15,7 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 from starlette.testclient import TestClient
 
+from oif import OIFError
 from oif.accounts import Accounts
 from oif.server import create_app
 
@@ -144,37 +146,23 @@ async def running(app: Any) -> AsyncIterator[str]:
         await task
 
 
-async def test_a_harness_connects_with_a_personal_token_until_it_is_revoked(tmp_path: Path) -> None:
-    shutil.copytree(EXAMPLE, tmp_path / "brain")
-    app = create_app(tmp_path / "brain", tmp_path / "oif.db")
-    accounts = Accounts(tmp_path / "oif.db")
-    accounts.setup(ALICE, PASSWORD)
-    accounts.set_group("costs", [ALICE])
-    identifier, token = accounts.issue(ALICE, "access", "claude code")
-
-    async def call(bearer: str | None, tool: str, arguments: dict) -> tuple[bool, str]:
-        headers = {"Authorization": f"Bearer {bearer}"} if bearer else {}
-        async with streamablehttp_client(url, headers=headers) as (read, write, _):
-            async with ClientSession(read, write) as session:
-                await session.initialize()
-                result = await session.call_tool(tool, arguments)
-                return result.isError, result.content[0].text
-
-    async with running(app) as url:
-        failed, text = await call(token, "list", {"path": "/skills"})
-        assert not failed and "analyze-costs" in text
-        failed, text = await call(token, "write", {"path": "/projects/costs/n.md", "content": "x"})
-        assert not failed
-        assert (await call(token, "read", {"path": "/people/alice/preferences.md"}))[0] is False
-        failed, text = await call(None, "list", {})
-        assert failed and "Authentication" in text
-        accounts.revoke(ALICE, identifier)
-        assert (await call(token, "list", {}))[0] is True
-    done = {(row["action"], row["ok"]) for row in accounts.activity()}
-    assert {("write", True), ("read", True)} <= done
+@asynccontextmanager
+async def harness(url: str, token: str | None) -> AsyncIterator[ClientSession]:
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    async with streamablehttp_client(url, headers=headers) as (read, write, _):
+        async with ClientSession(read, write) as session:
+            session.instructions = (await session.initialize()).instructions or ""
+            yield session
 
 
-async def test_use_skill_lists_only_what_each_identity_can_read(tmp_path: Path) -> None:
+async def call(session: ClientSession, tool: str, **arguments: Any) -> tuple[bool, Any]:
+    result = await session.call_tool(tool, arguments)
+    text = result.content[0].text
+    return result.isError, text if result.isError else json.loads(text)
+
+
+@pytest.fixture
+def team(tmp_path: Path) -> tuple[Any, Accounts, dict[str, str]]:
     shutil.copytree(EXAMPLE, tmp_path / "brain")
     app = create_app(tmp_path / "brain", tmp_path / "oif.db")
     accounts = Accounts(tmp_path / "oif.db")
@@ -182,41 +170,90 @@ async def test_use_skill_lists_only_what_each_identity_can_read(tmp_path: Path) 
     accounts.accept(accounts.invite(BOB, "member"), PASSWORD)
     accounts.set_group("costs", [ALICE])
     accounts.set_group("contracts", [BOB])
-    tokens = {who: accounts.issue(who, "access", "harness")[1] for who in (ALICE, BOB)}
+    return app, accounts, {who: accounts.issue(who, "access", "harness")[1] for who in (ALICE, BOB)}
 
-    async def session_for(token: str | None, action: Any) -> Any:
-        headers = {"Authorization": f"Bearer {token}"} if token else {}
-        async with streamablehttp_client(url, headers=headers) as (read, write, _):
-            async with ClientSession(read, write) as session:
-                await session.initialize()
-                return await action(session)
 
-    async def description(session: ClientSession) -> str:
+async def test_a_harness_works_with_a_personal_token_until_it_is_revoked(team: Any) -> None:
+    app, accounts, tokens = team
+    async with running(app) as url:
+        async with harness(url, tokens[ALICE]) as alice:
+            failed, root = await call(alice, "list")
+            assert not failed and root["home"].startswith("/people/alice-")
+            failed, written = await call(alice, "write", path=f"{root['home']}/n.md", content="x")
+            assert not failed and written["versioned"]
+            failed, text = await call(alice, "write", path=f"{root['home']}/n.md", content="y")
+            assert failed and "already_exists" not in text and written["version"] in text
+            assert not (await call(alice, "edit", path=f"{root['home']}/n.md", old="x", new="z"))[0]
+            assert not (
+                await call(alice, "create_folder", path="/projects/costs/r", description="R")
+            )[0]
+            assert not (
+                await call(alice, "append", path="/projects/costs/LEARNINGS.md", content="A")
+            )[0]
+            failed, learned = await call(alice, "list_learnings")
+            assert learned["learnings"][0]["author"] == ALICE
+        async with harness(url, tokens[BOB]) as bob:
+            assert (await call(bob, "read", path=f"{root['home']}/n.md"))[0]
+            assert (await call(bob, "list_learnings"))[1]["learnings"] == []
+        async with harness(url, None) as nobody:
+            failed, text = await call(nobody, "list")
+            assert failed and "Authentication" in text
+        identifier = accounts.tokens(ALICE)[0]["id"]
+        accounts.revoke(ALICE, identifier)
+        async with harness(url, tokens[ALICE]) as revoked:
+            assert (await call(revoked, "list"))[0]
+    done = {(row["action"], row["ok"], row["versioned"]) for row in accounts.activity()}
+    assert {("write", True, True), ("write", False, None), ("list_learnings", True, None)} <= done
+
+
+async def test_each_identity_is_told_only_the_skills_it_can_read(team: Any) -> None:
+    app, _, tokens = team
+
+    async def described(session: ClientSession) -> str:
         tools = (await session.list_tools()).tools
         return next(tool.description for tool in tools if tool.name == "use_skill")
 
     async with running(app) as url:
-        seen = await session_for(tokens[ALICE], description)
-        assert "analyze-costs-" in seen and "truncated samples" in seen
-        name = seen.split("- analyze-costs-")[1].split(":")[0]
-        for other in (tokens[BOB], None):
-            assert "analyze-costs" not in await session_for(other, description)
+        async with harness(url, tokens[ALICE]) as alice:
+            seen = await described(alice)
+            assert "truncated samples" in seen and "propose-skills" in seen
+            name = "analyze-costs-" + seen.split("- analyze-costs-")[1].split(":")[0]
+            # Harnesses may defer tool descriptions; instructions are always in context.
+            assert name in alice.instructions
+            assert (
+                "Ask for the summary first"
+                in (await call(alice, "use_skill", name=name))[1]["content"]
+            )
+            proposal = (await call(alice, "use_skill", name="propose-skills"))[1]["content"]
+            assert all(word in proposal for word in ("untrusted", "Cite", "confirmation"))
+        for token in (tokens[BOB], None):
+            async with harness(url, token) as other:
+                assert "analyze-costs" not in await described(other)
+                assert "analyze-costs" not in other.instructions
+                assert (await call(other, "use_skill", name=name))[0]
 
-        async def use(session: ClientSession) -> Any:
-            return await session.call_tool("use_skill", {"name": f"analyze-costs-{name}"})
 
-        assert (
-            "Ask for the summary first" in (await session_for(tokens[ALICE], use)).content[0].text
-        )
-        assert (await session_for(tokens[BOB], use)).isError
+def test_health_and_configuration_guards(tmp_path: Path) -> None:
+    shutil.copytree(EXAMPLE, tmp_path / "brain")
+    with pytest.raises(OIFError) as error:
+        create_app(tmp_path / "brain", tmp_path / "brain" / "oif.db")
+    assert error.value.code == "invalid_configuration"
+    client = TestClient(create_app(tmp_path / "brain", tmp_path / "oif.db", git=False))
+    assert client.get("/api/health").json() == {
+        "git": False,
+        "database": True,
+        "unversioned_writes": 0,
+    }
 
-        async def instructions(token: str | None) -> str:
-            headers = {"Authorization": f"Bearer {token}"} if token else {}
-            async with streamablehttp_client(url, headers=headers) as (read, write, _):
-                async with ClientSession(read, write) as session:
-                    return (await session.initialize()).instructions or ""
 
-        # Tool descriptions can be deferred by the harness; instructions are always in context.
-        assert f"analyze-costs-{name}" in await instructions(tokens[ALICE])
-        for other in (tokens[BOB], None):
-            assert "analyze-costs" not in await instructions(other)
+def test_a_removed_member_never_gets_the_old_personal_folder_back(tmp_path: Path) -> None:
+    accounts = Accounts(tmp_path / "oif.db")
+    accounts.setup(ADMIN, PASSWORD)
+    accounts.invite(ALICE, "member")
+    first = accounts.alias(ALICE)
+    accounts.remove_user(ALICE)
+    accounts.invite(ALICE, "member")
+    assert first and accounts.alias(ALICE) not in (None, first)
+    # A database created before aliases existed is migrated in place.
+    reopened = Accounts(tmp_path / "oif.db")
+    assert reopened.alias(ADMIN) == accounts.alias(ADMIN)

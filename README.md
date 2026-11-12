@@ -6,13 +6,14 @@ OIF is an MCP server that turns a folder into a team's shared brain: files with 
 
 ## Status
 
-Development implementation. What works today: the MCP server over a folder on disk, read and write permissions per folder, text search, skills delivered to each agent through `use_skill`, email and password accounts, personal tokens, groups, an activity log, and the JSON API for the future panel. **The web interface does not exist yet.** The server listens on loopback only. Example data is synthetic. The plan in progress is [docs/designs/core-permissioned-memory.md](docs/designs/core-permissioned-memory.md).
+Development implementation. What works today: the MCP server over a folder on disk, read and write permissions per folder, file operations with conflict detection, folder guidance written by agents, personal folders, text search, skills delivered to each agent through `use_skill`, a learnings log, email and password accounts, personal tokens, groups, an activity log, and the JSON API for the future panel. **The web interface does not exist yet.** The server listens on loopback only. Example data is synthetic. The plan in progress is [docs/designs/core-permissioned-memory.md](docs/designs/core-permissioned-memory.md).
 
 ## Try it
 
 ```bash
 uv sync
-uv run oif serve --root examples/brain        # accounts and activity go to ./oif.db
+cp -R examples/brain /tmp/oif-brain            # the server turns the brain folder into a git repository
+uv run oif serve --root /tmp/oif-brain        # accounts and activity go to ./oif.db
 
 # In another terminal: create the administrator, a group and a harness token.
 J='Content-Type: application/json'; U=http://127.0.0.1:8020
@@ -23,7 +24,7 @@ curl -b cookies.txt -H "$J" -d '{"name":"claude code"}' $U/api/tokens   # shows 
 claude mcp add --transport http oif $U/mcp --header "Authorization: Bearer <token>"
 ```
 
-MCP tools: `list`, `read`, `write`, `search`, `use_skill`.
+MCP tools: `list`, `read`, `write`, `edit`, `append`, `move`, `delete`, `create_folder`, `describe_folder`, `search`, `list_learnings`, `use_skill`.
 
 ## Brain format
 
@@ -31,7 +32,7 @@ Each folder may carry a `.oif.toml`:
 
 ```toml
 description = "Process and learnings of the costs team."
-start_here = ["/projects/costs/process.md"]
+start_here = ["process.md"]      # relative to the folder
 read = ["@costs"]     # emails, @group or "*"
 write = ["@costs"]
 ```
@@ -41,7 +42,8 @@ write = ["@costs"]
 - Groups and their members are managed in the accounts database through the API.
 - An administrator sees the structure and access lists of every folder, but does not read content they were not granted.
 - Files starting with a dot and symlinks are never visible to an agent.
-- If the root is a git repository, every write is committed under the author's name.
+- Every change is committed to a git repository in the brain root under the author's name. Replacing, moving or deleting a file needs the `version` returned by `read`, so two agents never overwrite each other silently.
+- Each account gets a personal folder under `/people/` that only its owner can read or write.
 - A skill is a folder with a `SKILL.md`. See `examples/brain/`.
 
 ## Verify

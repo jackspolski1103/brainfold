@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from oif import OIFError
+from oif import OIFError, short_name
 
 EMAIL = re.compile(r"[^@\s]+@[^@\s]+")
 GROUP = re.compile(r"[a-z0-9][a-z0-9_-]{0,62}")
@@ -38,6 +38,17 @@ CREATE TABLE IF NOT EXISTS activity(
   id INTEGER PRIMARY KEY, at REAL NOT NULL, actor TEXT NOT NULL,
   action TEXT NOT NULL, path TEXT NOT NULL, ok INTEGER NOT NULL);
 """
+
+
+# Additive migrations, applied in order; `PRAGMA user_version` records how many ran.
+MIGRATIONS = (
+    SCHEMA,
+    """
+ALTER TABLE users ADD COLUMN alias TEXT;
+CREATE TABLE aliases(alias TEXT PRIMARY KEY, email TEXT NOT NULL);
+ALTER TABLE activity ADD COLUMN versioned INTEGER;
+""",
+)
 
 
 class User(NamedTuple):
@@ -73,15 +84,38 @@ def _unauthenticated() -> OIFError:
 class Accounts:
     def __init__(self, path: Path | str) -> None:
         self._db = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
-        self._db.executescript(SCHEMA)
         self._lock = threading.RLock()
         self._failures: dict[str, tuple[int, float]] = {}
+        applied = self._db.execute("PRAGMA user_version").fetchone()[0]
+        for number, migration in enumerate(MIGRATIONS[applied:], applied + 1):
+            self._db.executescript(migration)
+            self._db.execute(f"PRAGMA user_version = {number}")
+        self._db.execute("PRAGMA foreign_keys = ON")
+        for (email,) in self._run("SELECT email FROM users WHERE alias IS NULL"):
+            self._assign_alias(email)
 
     def _run(self, sql: str, *args: Any) -> list[tuple[Any, ...]]:
         with self._lock:
             return self._db.execute(sql, args).fetchall()
 
     # --- members -----------------------------------------------------------------
+
+    def _assign_alias(self, email: str) -> None:
+        """Name of the personal folder. Rows in `aliases` are never deleted, so an alias
+        freed by removing a member is never handed to anyone else, not even the same email."""
+        attempt = 0
+        while True:
+            alias = short_name(email.split("@")[0], f"{email}#{attempt}", 4 + attempt)
+            try:
+                self._run("INSERT INTO aliases VALUES (?, ?)", alias, email)
+                break
+            except sqlite3.IntegrityError:
+                attempt += 1
+        self._run("UPDATE users SET alias = ? WHERE email = ?", alias, email)
+
+    def alias(self, email: str) -> str | None:
+        rows = self._run("SELECT alias FROM users WHERE email = ?", email)
+        return rows[0][0] if rows else None
 
     def needs_setup(self) -> bool:
         return not self._run("SELECT 1 FROM users LIMIT 1")
@@ -92,8 +126,10 @@ class Accounts:
             if not self.needs_setup():
                 raise OIFError("already_set_up", "The server already has an administrator.")
             self._run(
-                "INSERT INTO users VALUES (?, 'admin', ?, NULL)", _email(email), _password(password)
+                "INSERT INTO users(email, role, password) VALUES (?, 'admin', ?)",
+                *(_email(email), _password(password)),
             )
+            self._assign_alias(_email(email))
         return _email(email)
 
     def invite(self, email: Any, role: Any) -> str:
@@ -101,9 +137,12 @@ class Accounts:
             raise OIFError("invalid_role", "The role must be admin or member.")
         token = secrets.token_urlsafe(32)
         try:
-            self._run(
-                "INSERT INTO users VALUES (?, ?, NULL, ?)", _email(email), role, _digest(token)
-            )
+            with self._lock:
+                self._run(
+                    "INSERT INTO users(email, role, invite) VALUES (?, ?, ?)",
+                    *(_email(email), role, _digest(token)),
+                )
+                self._assign_alias(_email(email))
         except sqlite3.IntegrityError:
             raise OIFError("already_exists", "An account with that email already exists.") from None
         return token
@@ -224,17 +263,35 @@ class Accounts:
 
     # --- activity ----------------------------------------------------------------
 
-    def log(self, actor: str, action: str, path: str, ok: bool) -> None:
+    def log(
+        self, actor: str, action: str, path: str, ok: bool, versioned: bool | None = None
+    ) -> None:
+        """`versioned` is false when a change was saved but git did not record it."""
         self._run(
-            "INSERT INTO activity(at, actor, action, path, ok) VALUES (?, ?, ?, ?, ?)",
-            *(time.time(), actor, action, path[:1024], int(ok)),
+            "INSERT INTO activity(at, actor, action, path, ok, versioned) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            *(time.time(), actor, action, path[:1024], int(ok), versioned),
         )
+
+    def healthy(self) -> bool:
+        try:
+            return self._run("SELECT 1") == [(1,)]
+        except sqlite3.Error:
+            return False
 
     def activity(self, limit: int = 200) -> list[dict[str, Any]]:
         return [
-            {"at": at, "actor": actor, "action": action, "path": path, "ok": bool(ok)}
-            for at, actor, action, path, ok in self._run(
-                "SELECT at, actor, action, path, ok FROM activity ORDER BY id DESC LIMIT ?",
+            {
+                "at": at,
+                "actor": actor,
+                "action": action,
+                "path": path,
+                "ok": bool(ok),
+                "versioned": None if versioned is None else bool(versioned),
+            }
+            for at, actor, action, path, ok, versioned in self._run(
+                "SELECT at, actor, action, path, ok, versioned FROM activity "
+                "ORDER BY id DESC LIMIT ?",
                 max(1, min(limit, 1000)),
             )
         ]

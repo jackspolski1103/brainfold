@@ -1,2 +1,2 @@
 description = "Conventions that apply to every project."
-start_here = ["/common/conventions.md"]
+start_here = ["conventions.md"]

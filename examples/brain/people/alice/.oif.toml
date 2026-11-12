@@ -1,3 +1,0 @@
-description = "Private notes and preferences of alice."
-read = ["alice@atlas.test"]
-write = ["alice@atlas.test"]

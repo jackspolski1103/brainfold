@@ -1,4 +1,4 @@
 description = "Process and learnings of the costs team."
-start_here = ["/projects/costs/process.md"]
+start_here = ["process.md"]
 read = ["@costs"]
 write = ["@costs"]

@@ -200,7 +200,7 @@ Approval readiness: PASS. Checked rows: APPROACH (D6), DESIGN (D7), E2 (D8), E6 
 - **R11 (outside review 6).** Every git call has a timeout, closed stdin, and ignores user and system configuration and hooks (no signing, no hooks). A timeout counts as a failed commit.
 - **R12 (outside review 7).** Every brain operation, MCP tools included, runs in a worker thread so the event loop stays responsive. `/api/health` never takes the brain lock.
 - **R13 (outside review 5 and 8).** Before any change, if the file's current content differs from its latest recorded version (a hand edit, or a crash between rename and commit), the server first commits it and records a baseline. Until revision records exist in phase 2 this is the commit alone. A commit includes only the path being changed, never whatever a person has staged. If a recorded commit no longer exists because someone rewrote history, `restore` answers `no_history`. People may read and hand-edit files in the brain root but must not rewrite its git history.
-- **R14 (outside review 9).** Every path segment must match the on-disk name exactly, including case; a mismatch answers `unavailable`. Creating an entry that differs from a sibling only by case fails with `already_exists`. Behaviour is then the same on macOS and in the Linux container. This subsumes the path half of R1.
+- **R14 (outside review 9).** Every path segment must match the on-disk name exactly, including case; a mismatch answers `unavailable`. Creating an entry that differs from a sibling only by case answers `unavailable` as well. Behaviour is then the same on macOS and in the Linux container. This subsumes the path half of R1.
 - **R15 (outside review 10).** The Spanish-identifier check is a one-time search at the end of step 1, not a permanent test.
 - **Estimates.** The CC time estimates in this plan are optimistic for a surface this size; treat them as lower bounds.
 
@@ -300,39 +300,39 @@ T1 to T11 are phase 1; T12 to T16 are phase 2.
   - Files: src/oif/server.py
   - Verify: New Claude Code session with a second account lists a skill created by the first and uses it unprompted
   - Done 2026-11-12: one account wrote `/skills/cierre-mensual/SKILL.md`; a fresh headless Claude Code 2.1.322 session for a second account, given a matching task with no mention of skills, called `use_skill` and followed the procedure (activity row `usar_skill`, output carried the skill's marker line). A first run showed the tool description is deferred, so the listing was moved into the per-identity server instructions. Code: `src/oif/server.py`, test in `tests/test_server.py`.
-- [ ] **T2 (P1, human: ~2d / CC: ~1h)** — repo — Translate the repository to English, freeze tool names and error codes, remove historical docs, add prior-art page, update scope and decisions
+- [x] **T2 (P1, human: ~2d / CC: ~1h)** — repo — Translate the repository to English, freeze tool names and error codes, remove historical docs, add prior-art page, update scope and decisions
   - Surfaced by: E5; D11, D16; R10, R15
   - Files: src/oif/, tests/, examples/, docs/, AGENTS.md, README.md
   - Verify: One-time search for the fixed Spanish identifier list returns nothing; `uv run pytest -q` passes
-- [ ] **T3 (P1, human: ~3d / CC: ~1.5h)** — brain — One lock, worker-thread execution, versions and conflict errors
+- [x] **T3 (P1, human: ~3d / CC: ~1.5h)** — brain — One lock, worker-thread execution, versions and conflict errors
   - Surfaced by: Common write rules; R5, R12
   - Files: src/oif/brain.py, src/oif/server.py, tests/test_brain.py
   - Verify: Barrier test with simultaneous writers: second gets `conflict`
-- [ ] **T4 (P1, human: ~2d / CC: ~1h)** — brain — Hardened git: init, timeout, no user config or hooks, path-limited commit, refuse foreign index lock, baseline on divergent content
+- [x] **T4 (P1, human: ~2d / CC: ~1h)** — brain — Hardened git: init, timeout, no user config or hooks, path-limited commit, refuse foreign index lock, baseline on divergent content
   - Surfaced by: R2, R11, R13
   - Files: src/oif/brain.py, src/oif/cli.py, tests/test_brain.py
   - Verify: Tests: commit with a hanging hook times out; staged foreign file is not committed; divergent content is committed before change
-- [ ] **T5 (P1, human: ~2d / CC: ~1h)** — server — Health endpoint, versioned flag in activity, storage_error mapping, startup temp cleanup, schema versioning
+- [x] **T5 (P1, human: ~2d / CC: ~1h)** — server — Health endpoint, versioned flag in activity, storage_error mapping, startup temp cleanup, schema versioning
   - Surfaced by: R2, R3, R6
   - Files: src/oif/server.py, src/oif/accounts.py, tests/test_server.py
   - Verify: `GET /api/health` reports git and database; simulated `OSError` answers `storage_error` and leaves no temp file
-- [ ] **T6 (P1, human: ~4d / CC: ~2h)** — brain — Text operations: edit, append, file move and delete, create_folder, describe_folder, relative start_here, exact-case paths, pagination, text limits
+- [x] **T6 (P1, human: ~4d / CC: ~2h)** — brain — Text operations: edit, append, file move and delete, create_folder, describe_folder, relative start_here, exact-case paths, pagination, text limits
   - Surfaced by: Layer 1; R4, R14
   - Files: src/oif/brain.py, src/oif/server.py, examples/brain/, tests/test_brain.py
   - Verify: Unit tests per operation including denial, case-variant path and offset
-- [ ] **T7 (P1, human: ~2d / CC: ~1h)** — accounts — Personal folders: unique alias, reserved /people, owner rule, alias tombstones
+- [x] **T7 (P1, human: ~2d / CC: ~1h)** — accounts — Personal folders: unique alias, reserved /people, owner rule, alias tombstones
   - Surfaced by: Layer 1 personal folder; R1, R7
   - Files: src/oif/accounts.py, src/oif/brain.py, src/oif/server.py, tests/
   - Verify: Tests: `/PEOPLE/<alias>` denied, re-invited email gets a new alias, panel cannot edit access under `/people`
-- [ ] **T8 (P1, human: ~2d / CC: ~1h)** — server — Skills: use_skill with per-identity listing, SKILL.md validation, trust model in instructions, remove list_skills
+- [x] **T8 (P1, human: ~2d / CC: ~1h)** — server — Skills: use_skill with per-identity listing, SKILL.md validation, trust model in instructions, remove list_skills
   - Surfaced by: D18; skill trust model
   - Files: src/oif/server.py, src/oif/brain.py, tests/test_server.py
   - Verify: Tool listing differs per identity; invalid `SKILL.md` skipped; write of invalid `SKILL.md` answers `invalid_skill`
-- [ ] **T9 (P1, human: ~1d / CC: ~30min)** — server — Learnings: stamped append, list_learnings, built-in propose-skills skill
+- [x] **T9 (P1, human: ~1d / CC: ~30min)** — server — Learnings: stamped append, list_learnings, built-in propose-skills skill
   - Surfaced by: E2; D8
   - Files: src/oif/brain.py, src/oif/server.py, tests/
   - Verify: A learning containing a delimiter-looking line returns as one entry; skill text asserts untrusted, cite, confirm
-- [ ] **T10 (P1, human: ~2d / CC: ~40min)** — tests — Permission matrix test: every tool against every permission situation
+- [x] **T10 (P1, human: ~2d / CC: ~40min)** — tests — Permission matrix test: every tool against every permission situation
   - Surfaced by: R8
   - Files: tests/test_matrix.py
   - Verify: `uv run pytest -q tests/test_matrix.py`
