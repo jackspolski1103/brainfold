@@ -42,3 +42,12 @@ def test_a_member_without_any_group_still_finds_their_personal_folder(brain: Bra
     assert brain.search(DANA, "mine")["hits"][0]["path"] == "/people/dana-9z8y/notes.md"
     assert code(brain.list, DANA, "/projects") == "unavailable"
     assert code(brain.read, DANA, "/common/conventions.md") == "unavailable"
+
+
+# Regression: ISSUE-003 — an administrator could open a personal folder's listing.
+def test_an_administrator_cannot_open_a_personal_folder_even_in_manage_mode(brain: Brain) -> None:
+    brain.ensure_home(ALICE)
+    brain.write(ALICE, "/people/alice-1a2b/notes.md", "private")
+    names = [entry["path"] for entry in brain.list(ADMIN, "/people", manage=True)["entries"]]
+    assert names == ["/people/alice-1a2b"]  # the administrator still sees that it exists
+    assert code(brain.list, ADMIN, "/people/alice-1a2b", manage=True) == "unavailable"

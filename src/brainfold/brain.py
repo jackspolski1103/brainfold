@@ -317,6 +317,9 @@ class Brain:
         """`manage` shows an administrator every folder and its grants, not file content."""
         target = self._real(path)
         read, write = self._access(who, target)
+        parts = self._parts(target)
+        if parts[:1] == (PEOPLE,) and len(parts) > 1:
+            manage = False  # a personal folder is its owner's, also for administrators
         if not (read or manage) or not target.is_dir():
             home = self.alias(who)
             if target == self.root and home and (self.root / PEOPLE / home).is_dir():
