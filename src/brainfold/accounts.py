@@ -251,13 +251,15 @@ class Accounts:
             )
             return self._run("SELECT last_insert_rowid()")[0][0], token
 
-    def authenticate(self, token: str | None) -> User:
+    def authenticate(self, token: str | None, kind: str) -> User:
+        """`kind` keeps the two credentials apart: a harness `access` token never opens the
+        panel API, and a panel `session` never acts as a harness."""
         if not token:
             raise _unauthenticated()
         rows = self._run(
             "SELECT tokens.id, users.email, users.role FROM tokens JOIN users USING (email) "
-            "WHERE digest = ? AND (expires IS NULL OR expires > ?)",
-            *(_digest(token), time.time()),
+            "WHERE digest = ? AND kind = ? AND (expires IS NULL OR expires > ?)",
+            *(_digest(token), kind, time.time()),
         )
         if not rows:
             raise _unauthenticated()

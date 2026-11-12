@@ -135,7 +135,7 @@ def create_app(
         token = _bearer(request) if request else None
 
         def work() -> Any:
-            actor = accounts.authenticate(token).email
+            actor = accounts.authenticate(token, "access").email
             brain.ensure_home(actor)
             return act(actor, action, path, lambda: call(actor))
 
@@ -269,7 +269,7 @@ def create_app(
 
     def listing(token: str | None) -> list[str]:
         try:
-            skills = skills_for(accounts.authenticate(token).email)
+            skills = skills_for(accounts.authenticate(token, "access").email)
         except BrainfoldError:
             return []  # unauthenticated: the tool is visible, the skills are not
         return [f"- {name}: {skill['description'][:120]}" for name, skill in skills.items()]
@@ -320,7 +320,7 @@ def create_app(
                     body = await request.json()
                     if not isinstance(body, dict):
                         raise ValueError
-                user = None if public else accounts.authenticate(_token(request))
+                user = None if public else accounts.authenticate(_session(request), "session")
                 if admin and (user is None or user.role != "admin"):
                     raise BrainfoldError("forbidden", "This action requires an administrator.")
                 result = await run_in_threadpool(handler, request, user, body)
@@ -361,7 +361,7 @@ def create_app(
 
     def state(request: Request, _user: None, _body: dict) -> dict[str, Any]:
         try:
-            user = accounts.authenticate(_token(request))
+            user = accounts.authenticate(_session(request), "session")
         except BrainfoldError:
             user = None
         return {
@@ -398,7 +398,7 @@ def create_app(
         return signed_in(request, email, accounts.login(email, body["password"]))
 
     def logout(request: Request, _user: User, _body: dict) -> Response:
-        accounts.logout(_token(request))
+        accounts.logout(_session(request))
         response = JSONResponse({})
         response.delete_cookie(COOKIE)
         return response
@@ -466,7 +466,7 @@ def create_app(
         a file opened in an administrator's browser cannot act with their session."""
         path = "/" + request.path_params["path"]
         try:
-            actor = accounts.authenticate(_bearer(request)).email
+            actor = accounts.authenticate(_bearer(request), "access").email
             if request.method != "PUT":
                 data, version = await run_in_threadpool(
                     act, actor, "download", path, lambda: brain.download(actor, path)
@@ -560,5 +560,6 @@ def _bearer(request: Request) -> str | None:
     return token if scheme.lower() == "bearer" and token else None
 
 
-def _token(request: Request) -> str | None:
-    return _bearer(request) or request.cookies.get(COOKIE)
+def _session(request: Request) -> str | None:
+    """The panel API takes only the session cookie, never a Bearer token."""
+    return request.cookies.get(COOKIE)

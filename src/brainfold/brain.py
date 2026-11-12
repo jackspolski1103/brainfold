@@ -17,6 +17,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import subprocess
 import threading
 import tomllib
@@ -421,7 +422,8 @@ class Brain:
         if len(data) > MAX_TEXT_BYTES or not _is_text(data):
             return result | {
                 "kind": "binary",
-                "fetch": f"Run in a shell: brainfold get {path} <local destination>",
+                # Quoted: the name was chosen by whoever stored the file.
+                "fetch": shlex.join(["brainfold", "get", path, f"./{path.rsplit('/', 1)[-1]}"]),
             }
         lines = data.decode("utf-8").splitlines(keepends=True)
         start = max(0, offset)
