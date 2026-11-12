@@ -14,4 +14,4 @@ Keeping the own harness as the product and adding the server: twice the surface 
 
 ## Consequences
 
-Real folders and files on disk. Each folder may carry a `.oif.toml` with `description`, `start_here`, `read` and `write`. Read is denied unless granted and narrows down the tree. Write follows the nearest folder that declares it and is denied by default. Metadata files, `.git` and symlinks are never visible to an agent. Skills are folders with a `SKILL.md` inside the same tree.
+Real folders and files on disk. Each folder may carry a `.brainfold.toml` with `description`, `start_here`, `read` and `write`. Read is denied unless granted and narrows down the tree. Write follows the nearest folder that declares it and is denied by default. Metadata files, `.git` and symlinks are never visible to an agent. Skills are folders with a `SKILL.md` inside the same tree.

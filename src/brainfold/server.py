@@ -19,11 +19,11 @@ from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from oif import OIFError, short_name
-from oif.accounts import SESSION_SECONDS, Accounts, User
-from oif.brain import Brain
+from brainfold import BrainfoldError, short_name
+from brainfold.accounts import SESSION_SECONDS, Accounts, User
+from brainfold.brain import Brain
 
-COOKIE = "oif_session"
+COOKIE = "brainfold_session"
 PANEL = Path(__file__).parent / "panel"  # built web panel, present only after `npm run build`
 STATUS = {
     "unauthenticated": 401,
@@ -75,7 +75,7 @@ def create_app(
     always Secure, the first account needs the printed setup code, and the client address
     comes from the proxy."""
     if database != ":memory:" and Path(database).resolve().is_relative_to(root.resolve()):
-        raise OIFError(
+        raise BrainfoldError(
             "invalid_configuration", "The accounts database must be outside the brain folder."
         )
     accounts = Accounts(database)
@@ -85,7 +85,7 @@ def create_app(
         """Run one brain operation and record it, with whether git kept the change."""
         try:
             result = call()
-        except OIFError:
+        except BrainfoldError:
             accounts.log(actor, action, path, False)
             raise
         versioned = result.get("versioned") if isinstance(result, dict) else None
@@ -111,7 +111,7 @@ def create_app(
     setup_code = secrets.token_urlsafe(16) if public_url and accounts.needs_setup() else None
 
     server = FastMCP(
-        "OIF brain",
+        "Brainfold",
         instructions=INSTRUCTIONS,
         transport_security=TransportSecuritySettings(
             enable_dns_rebinding_protection=True,
@@ -256,7 +256,7 @@ def create_app(
         def load(who: str) -> dict[str, Any]:
             skill = skills_for(who).get(name)
             if skill is None:
-                raise OIFError("unavailable", "The skill is not available.")
+                raise BrainfoldError("unavailable", "The skill is not available.")
             if "content" in skill:
                 return {"name": name, "content": skill["content"]}
             return {"name": name, **brain.read(who, skill["path"])}
@@ -270,7 +270,7 @@ def create_app(
     def listing(token: str | None) -> list[str]:
         try:
             skills = skills_for(accounts.authenticate(token).email)
-        except OIFError:
+        except BrainfoldError:
             return []  # unauthenticated: the tool is visible, the skills are not
         return [f"- {name}: {skill['description'][:120]}" for name, skill in skills.items()]
 
@@ -322,10 +322,10 @@ def create_app(
                         raise ValueError
                 user = None if public else accounts.authenticate(_token(request))
                 if admin and (user is None or user.role != "admin"):
-                    raise OIFError("forbidden", "This action requires an administrator.")
+                    raise BrainfoldError("forbidden", "This action requires an administrator.")
                 result = await run_in_threadpool(handler, request, user, body)
                 return result if isinstance(result, Response) else JSONResponse(result)
-            except OIFError as error:
+            except BrainfoldError as error:
                 return JSONResponse(
                     {"error": {"code": error.code, "message": error.message}},
                     status_code=STATUS.get(error.code, 400),
@@ -362,7 +362,7 @@ def create_app(
     def state(request: Request, _user: None, _body: dict) -> dict[str, Any]:
         try:
             user = accounts.authenticate(_token(request))
-        except OIFError:
+        except BrainfoldError:
             user = None
         return {
             "setup_needed": accounts.needs_setup(),
@@ -379,7 +379,7 @@ def create_app(
         # Behind a public address, only whoever can read the server's output may claim it.
         given = str(body.get("code", ""))
         if public_url and not (setup_code and hmac.compare_digest(given, setup_code)):
-            raise OIFError("forbidden", "The setup code printed by the server is required.")
+            raise BrainfoldError("forbidden", "The setup code printed by the server is required.")
         email = accounts.setup(body["email"], body["password"])
         return signed_in(request, email, accounts.login(email, body["password"]))
 
@@ -387,7 +387,7 @@ def create_app(
         email = str(body["email"]).strip().lower()[:254]
         try:
             session = accounts.login(email, body["password"], address(request))
-        except OIFError:
+        except BrainfoldError:
             accounts.log(email, "login", "", False)
             raise
         accounts.log(email, "login", "", True)
@@ -478,14 +478,16 @@ def create_app(
                 }
                 return Response(data, media_type="application/octet-stream", headers=headers)
             # The body is received outside the brain lock, into a file the server cleans up.
-            temporary = brain.root / f".upload-{secrets.token_hex(8)}.oif-tmp"
+            temporary = brain.root / f".upload-{secrets.token_hex(8)}.brainfold-tmp"
             try:
                 received = 0
                 with temporary.open("wb") as out:
                     async for chunk in request.stream():
                         received += len(chunk)
                         if received > brain.max_file_bytes:
-                            raise OIFError("file_too_large", "The file exceeds the upload limit.")
+                            raise BrainfoldError(
+                                "file_too_large", "The file exceeds the upload limit."
+                            )
                         out.write(chunk)
                 version = request.headers.get("if-match", "").strip('"') or None
                 result = await run_in_threadpool(
@@ -498,7 +500,7 @@ def create_app(
             finally:
                 temporary.unlink(missing_ok=True)
             return JSONResponse(result)
-        except OIFError as error:
+        except BrainfoldError as error:
             return JSONResponse(
                 {"error": {"code": error.code, "message": error.message}},
                 status_code=STATUS.get(error.code, 400),

@@ -33,4 +33,4 @@ build/
 work/
 tmp/
 node_modules/
-/src/oif/panel/
+/src/brainfold/panel/

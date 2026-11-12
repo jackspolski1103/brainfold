@@ -3,7 +3,7 @@ requires = ["hatchling>=1.27,<2"]
 build-backend = "hatchling.build"
 
 [project]
-name = "oif"
+name = "brainfold"
 version = "0.1.0"
 description = "A shared, permissioned brain of folders and files for any agent harness, over MCP"
 readme = "README.md"
@@ -11,15 +11,15 @@ requires-python = ">=3.12"
 dependencies = ["mcp>=1.30,<2", "uvicorn>=0.34,<1"]
 
 [project.scripts]
-oif = "oif.cli:main"
+brainfold = "brainfold.cli:main"
 
 [dependency-groups]
 dev = ["pytest>=8.3,<10", "pytest-asyncio>=0.25,<2", "ruff>=0.11,<1"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/oif"]
+packages = ["src/brainfold"]
 # The built web panel is ignored by git but belongs in the package.
-artifacts = ["src/oif/panel/**"]
+artifacts = ["src/brainfold/panel/**"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

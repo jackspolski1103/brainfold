@@ -15,9 +15,9 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 from starlette.testclient import TestClient
 
-from oif import OIFError
-from oif.accounts import Accounts
-from oif.server import create_app
+from brainfold import BrainfoldError
+from brainfold.accounts import Accounts
+from brainfold.server import create_app
 
 EXAMPLE = Path(__file__).parent.parent / "examples" / "brain"
 ADMIN, ALICE, BOB = "admin@atlas.test", "alice@atlas.test", "bob@atlas.test"
@@ -27,7 +27,7 @@ PASSWORD = "a-long-password"
 @pytest.fixture
 def app(tmp_path: Path) -> Any:
     shutil.copytree(EXAMPLE, tmp_path / "brain")
-    return create_app(tmp_path / "brain", tmp_path / "oif.db")
+    return create_app(tmp_path / "brain", tmp_path / "brainfold.db")
 
 
 def join(app: Any, admin: TestClient, email: str) -> TestClient:
@@ -168,8 +168,8 @@ async def call(session: ClientSession, tool: str, **arguments: Any) -> tuple[boo
 @pytest.fixture
 def team(tmp_path: Path) -> tuple[Any, Accounts, dict[str, str]]:
     shutil.copytree(EXAMPLE, tmp_path / "brain")
-    app = create_app(tmp_path / "brain", tmp_path / "oif.db")
-    accounts = Accounts(tmp_path / "oif.db")
+    app = create_app(tmp_path / "brain", tmp_path / "brainfold.db")
+    accounts = Accounts(tmp_path / "brainfold.db")
     accounts.setup(ALICE, PASSWORD)
     accounts.accept(accounts.invite(BOB, "member"), PASSWORD)
     accounts.set_group("costs", [ALICE])
@@ -239,10 +239,10 @@ async def test_each_identity_is_told_only_the_skills_it_can_read(team: Any) -> N
 
 def test_health_and_configuration_guards(tmp_path: Path) -> None:
     shutil.copytree(EXAMPLE, tmp_path / "brain")
-    with pytest.raises(OIFError) as error:
-        create_app(tmp_path / "brain", tmp_path / "brain" / "oif.db")
+    with pytest.raises(BrainfoldError) as error:
+        create_app(tmp_path / "brain", tmp_path / "brain" / "brainfold.db")
     assert error.value.code == "invalid_configuration"
-    client = TestClient(create_app(tmp_path / "brain", tmp_path / "oif.db", git=False))
+    client = TestClient(create_app(tmp_path / "brain", tmp_path / "brainfold.db", git=False))
     assert client.get("/api/health").json() == {
         "git": False,
         "database": True,
@@ -251,7 +251,7 @@ def test_health_and_configuration_guards(tmp_path: Path) -> None:
 
 
 def test_a_removed_member_never_gets_the_old_personal_folder_back(tmp_path: Path) -> None:
-    accounts = Accounts(tmp_path / "oif.db")
+    accounts = Accounts(tmp_path / "brainfold.db")
     accounts.setup(ADMIN, PASSWORD)
     accounts.invite(ALICE, "member")
     first = accounts.alias(ALICE)
@@ -259,7 +259,7 @@ def test_a_removed_member_never_gets_the_old_personal_folder_back(tmp_path: Path
     accounts.invite(ALICE, "member")
     assert first and accounts.alias(ALICE) not in (None, first)
     # A database created before aliases existed is migrated in place.
-    reopened = Accounts(tmp_path / "oif.db")
+    reopened = Accounts(tmp_path / "brainfold.db")
     assert reopened.alias(ADMIN) == accounts.alias(ADMIN)
 
 
@@ -268,7 +268,7 @@ async def test_files_travel_over_http_with_a_token_and_never_with_the_panel_cook
 ) -> None:
     import httpx
 
-    from oif import cli
+    from brainfold import cli
 
     app, accounts, tokens = team
     sheet = bytes(range(256))
@@ -298,12 +298,12 @@ async def test_files_travel_over_http_with_a_token_and_never_with_the_panel_cook
             await http.post("/api/login", json={"email": ALICE, "password": PASSWORD})
             assert http.cookies and (await http.get(target)).status_code == 401
             assert (
-                await http.get("/files/projects/costs/%2e%2e/%2e%2e/.oif.toml", headers=alice)
+                await http.get("/files/projects/costs/%2e%2e/%2e%2e/.brainfold.toml", headers=alice)
             ).status_code == 404
 
         # The command line reads the server and token from the environment only.
-        monkeypatch.setenv("OIF_URL", base)
-        monkeypatch.setenv("OIF_TOKEN", tokens[ALICE])
+        monkeypatch.setenv("BRAINFOLD_URL", base)
+        monkeypatch.setenv("BRAINFOLD_TOKEN", tokens[ALICE])
         local = tmp_path / "manual.pdf"
         local.write_bytes(b"%PDF-1.7 synthetic")
         run = asyncio.to_thread
@@ -317,7 +317,7 @@ async def test_files_travel_over_http_with_a_token_and_never_with_the_panel_cook
             == 0
         )
         assert (tmp_path / "back.pdf").read_bytes() == b"%PDF-1.7 synthetic"
-        monkeypatch.setenv("OIF_URL", "http://example.com")
+        monkeypatch.setenv("BRAINFOLD_URL", "http://example.com")
         assert (
             await run(cli.main, ["get", "/projects/costs/manual.pdf", str(tmp_path / "no.pdf")])
             == 1
@@ -325,7 +325,7 @@ async def test_files_travel_over_http_with_a_token_and_never_with_the_panel_cook
 
         async with harness(url, tokens[ALICE]) as session:
             failed, seen = await call(session, "read", path="/projects/costs/salaries.xlsx")
-            assert not failed and seen["kind"] == "binary" and "oif get" in seen["fetch"]
+            assert not failed and seen["kind"] == "binary" and "brainfold get" in seen["fetch"]
             failed, past = await call(session, "history", path="/projects/costs/salaries.xlsx")
             assert [row["change"] for row in past["revisions"]] == ["upload", "upload"]
             version = (await call(session, "read", path="/projects/costs/salaries.xlsx"))[1][
@@ -347,11 +347,11 @@ async def test_files_travel_over_http_with_a_token_and_never_with_the_panel_cook
 
 
 def test_a_retired_group_name_cannot_be_reused(tmp_path: Path) -> None:
-    accounts = Accounts(tmp_path / "oif.db")
+    accounts = Accounts(tmp_path / "brainfold.db")
     accounts.setup(ADMIN, PASSWORD)
     accounts.set_group("finance", [ADMIN])
     accounts.set_group("finance", [])
-    with pytest.raises(OIFError) as error:
+    with pytest.raises(BrainfoldError) as error:
         accounts.set_group("finance", [ADMIN])
     assert error.value.code == "invalid_group"
 
@@ -361,7 +361,7 @@ async def test_behind_a_public_address_the_server_must_be_claimed_with_its_code(
 ) -> None:
     shutil.copytree(EXAMPLE, tmp_path / "brain")
     app = create_app(
-        tmp_path / "brain", tmp_path / "oif.db", public_url="https://brain.example.test"
+        tmp_path / "brain", tmp_path / "brainfold.db", public_url="https://brain.example.test"
     )
     client = TestClient(app, base_url="http://127.0.0.1")
     body = {"email": ADMIN, "password": PASSWORD}
@@ -385,7 +385,7 @@ async def test_behind_a_public_address_the_server_must_be_claimed_with_its_code(
     )
 
     # The MCP endpoint answers for the public host and refuses any other.
-    token = Accounts(tmp_path / "oif.db").issue(ADMIN, "access", "harness")[1]
+    token = Accounts(tmp_path / "brainfold.db").issue(ADMIN, "access", "harness")[1]
     async with running(app) as url:
         async with harness(url, token) as local:
             assert not (await call(local, "use_skill", name="propose-skills"))[0]
@@ -409,7 +409,7 @@ async def test_behind_a_public_address_the_server_must_be_claimed_with_its_code(
 def test_the_built_panel_is_served_with_a_restrictive_policy(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from oif import server
+    from brainfold import server
 
     shutil.copytree(EXAMPLE, tmp_path / "brain")
     monkeypatch.setattr(server, "PANEL", tmp_path / "missing")

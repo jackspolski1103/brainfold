@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from oif import OIFError, short_name
+from brainfold import BrainfoldError, short_name
 
 EMAIL = re.compile(r"[^@\s]+@[^@\s]+")
 GROUP = re.compile(r"[a-z0-9][a-z0-9_-]{0,62}")
@@ -74,19 +74,19 @@ def _hash(password: str, salt: bytes) -> str:
 
 def _email(value: Any) -> str:
     if not isinstance(value, str) or len(value) > 254 or not EMAIL.fullmatch(value.strip()):
-        raise OIFError("invalid_email", "The email is not valid.")
+        raise BrainfoldError("invalid_email", "The email is not valid.")
     return value.strip().lower()
 
 
 def _password(value: Any) -> str:
     if not isinstance(value, str) or not 10 <= len(value) <= 256:
-        raise OIFError("invalid_password", "The password must be 10 to 256 characters long.")
+        raise BrainfoldError("invalid_password", "The password must be 10 to 256 characters long.")
     salt = secrets.token_bytes(16)
     return f"{salt.hex()}:{_hash(value, salt)}"
 
 
-def _unauthenticated() -> OIFError:
-    return OIFError("unauthenticated", "Authentication is required.")
+def _unauthenticated() -> BrainfoldError:
+    return BrainfoldError("unauthenticated", "Authentication is required.")
 
 
 class Accounts:
@@ -132,7 +132,7 @@ class Accounts:
         """The first account becomes the administrator; later accounts need an invite."""
         with self._lock:
             if not self.needs_setup():
-                raise OIFError("already_set_up", "The server already has an administrator.")
+                raise BrainfoldError("already_set_up", "The server already has an administrator.")
             self._run(
                 "INSERT INTO users(email, role, password, created) VALUES (?, 'admin', ?, ?)",
                 *(_email(email), _password(password), time.time()),
@@ -142,7 +142,7 @@ class Accounts:
 
     def invite(self, email: Any, role: Any) -> str:
         if role not in {"admin", "member"}:
-            raise OIFError("invalid_role", "The role must be admin or member.")
+            raise BrainfoldError("invalid_role", "The role must be admin or member.")
         token = secrets.token_urlsafe(32)
         try:
             with self._lock:
@@ -152,7 +152,9 @@ class Accounts:
                 )
                 self._assign_alias(_email(email))
         except sqlite3.IntegrityError:
-            raise OIFError("already_exists", "An account with that email already exists.") from None
+            raise BrainfoldError(
+                "already_exists", "An account with that email already exists."
+            ) from None
         return token
 
     def accept(self, invite: Any, password: Any) -> str:
@@ -160,7 +162,9 @@ class Accounts:
         with self._lock:
             rows = self._run("SELECT email FROM users WHERE invite = ?", _digest(str(invite)))
             if not rows:
-                raise OIFError("invalid_invite", "The invite is not valid or was already used.")
+                raise BrainfoldError(
+                    "invalid_invite", "The invite is not valid or was already used."
+                )
             self._run(
                 "UPDATE users SET password = ?, invite = NULL WHERE email = ?", hashed, rows[0][0]
             )
@@ -184,7 +188,7 @@ class Accounts:
         with self._lock:
             admins = [row[0] for row in self._run("SELECT email FROM users WHERE role = 'admin'")]
             if admins == [email]:
-                raise OIFError("last_admin", "The only administrator cannot be removed.")
+                raise BrainfoldError("last_admin", "The only administrator cannot be removed.")
             self._run("DELETE FROM users WHERE email = ?", email)  # cascades to tokens, groups
 
     def groups(self) -> dict[str, list[str]]:
@@ -196,11 +200,11 @@ class Accounts:
     def set_group(self, name: str, members: Any) -> None:
         """Replace a group's members; an empty list deletes the group."""
         if not GROUP.fullmatch(name) or not isinstance(members, list):
-            raise OIFError("invalid_group", "The group name or its members are not valid.")
+            raise BrainfoldError("invalid_group", "The group name or its members are not valid.")
         with self._lock:
             if self._run("SELECT 1 FROM retired_groups WHERE name = ?", name):
                 # Old revisions name this group; new members must not inherit its history.
-                raise OIFError("invalid_group", "That group name was retired. Pick another.")
+                raise BrainfoldError("invalid_group", "That group name was retired. Pick another.")
             if not members and name in self.groups():
                 self._run("INSERT INTO retired_groups VALUES (?)", name)
             try:
@@ -211,18 +215,18 @@ class Accounts:
                 self._run("COMMIT")
             except sqlite3.Error:
                 self._run("ROLLBACK")
-                raise OIFError("invalid_group", "A member has no account.") from None
+                raise BrainfoldError("invalid_group", "A member has no account.") from None
 
     # --- authentication ----------------------------------------------------------
 
     def login(self, email: Any, password: Any, address: str = "") -> str:
         """`address` is the client's address: one attacker cannot lock an account for all."""
         email = str(email).strip().lower()
-        failed = OIFError("invalid_credentials", "Wrong email or password.")
+        failed = BrainfoldError("invalid_credentials", "Wrong email or password.")
         key = f"{email}|{address}"
         count, since = self._failures.get(key, (0, 0.0))
         if count >= MAX_FAILURES and time.time() - since < LOCK_SECONDS:
-            raise OIFError("too_many_attempts", "Too many attempts. Try again in a minute.")
+            raise BrainfoldError("too_many_attempts", "Too many attempts. Try again in a minute.")
         rows = self._run("SELECT password FROM users WHERE email = ?", email)
         salt, _, expected = (rows[0][0] if rows and rows[0][0] else "00:").partition(":")
         # Hash even for unknown accounts so timing does not reveal which emails exist.
@@ -236,8 +240,8 @@ class Accounts:
 
     def issue(self, email: str, kind: str, name: Any, ttl: float | None = None) -> tuple[int, str]:
         if not isinstance(name, str) or not 1 <= len(name.strip()) <= 80:
-            raise OIFError("invalid_name", "The token needs a name of up to 80 characters.")
-        token = f"oif_{secrets.token_urlsafe(32)}"
+            raise BrainfoldError("invalid_name", "The token needs a name of up to 80 characters.")
+        token = f"brainfold_{secrets.token_urlsafe(32)}"
         now = time.time()
         with self._lock:
             self._run(

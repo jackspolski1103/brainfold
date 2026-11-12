@@ -143,7 +143,7 @@ export function Tokens() {
             <Notice tone="blue">Copy the token now. It is not shown again.</Notice>
             <Copyable text={created} />
             <p className="pt-2 text-sm font-medium">Connect Claude Code</p>
-            <Copyable text={`claude mcp add --transport http oif ${location.origin}/mcp --header "Authorization: Bearer ${created}"`} />
+            <Copyable text={`claude mcp add --transport http brainfold ${location.origin}/mcp --header "Authorization: Bearer ${created}"`} />
           </div>
         )}
       </Card>

@@ -1,4 +1,4 @@
-"""OIF: a shared, permissioned brain of folders and files for any agent harness."""
+"""Brainfold: a shared, permissioned brain of folders and files for any agent harness."""
 
 import hashlib
 import re
@@ -12,7 +12,7 @@ def short_name(text: str, key: str, length: int) -> str:
     return f"{base}-{hashlib.sha256(key.encode()).hexdigest()[:length]}"
 
 
-class OIFError(Exception):
+class BrainfoldError(Exception):
     """A safe, classified error; its message may be returned to the user or model."""
 
     def __init__(self, code: str, message: str):

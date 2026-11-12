@@ -1,4 +1,4 @@
-# Plan: OIF core, permissioned memory that spreads on its own
+# Plan: Brainfold core, permissioned memory that spreads on its own
 
 Status: scope decided in CEO review (SELECTIVE EXPANSION), 2026-11-12. Tasks T1 to T15 are implemented on branch `core-phase-1`; T16 (publication) waits for the author's decisions on name, license, remote repository and registry.
 Source design: approved /office-hours design of 2026-11-12 (Spanish original kept outside the repo in the author's local gstack store).
@@ -6,7 +6,7 @@ Approving this plan implies updating `docs/scope.md` and recording a new decisio
 
 ## Goal
 
-OIF is an MCP server that turns a folder into a team's shared brain: files with per-folder permissions that any harness reads and writes. This plan covers the core only. The web panel comes after.
+Brainfold is an MCP server that turns a folder into a team's shared brain: files with per-folder permissions that any harness reads and writes. This plan covers the core only. The web panel comes after.
 
 Two scenes define success:
 
@@ -19,19 +19,19 @@ Strong permissions are a necessary condition, not the pitch. Being harness-agnos
 
 1. The hook is that knowledge spreads on its own.
 2. The agent is the main author: within its permissions it creates folders with guidance, edits, moves and writes skills without waiting for an administrator.
-3. OIF stores files and controls access. It does not interpret them. Reading a PDF or a spreadsheet is the harness's job.
+3. Brainfold stores files and controls access. It does not interpret them. Reading a PDF or a spreadsheet is the harness's job.
 4. Skills reach the harness natively.
 5. It installs with one command.
-6. First proof is a built example case, plus OIF's own brain (`brain/`, its own git repository, ignored by the code repository) used daily.
+6. First proof is a built example case, plus Brainfold's own brain (`brain/`, its own git repository, ignored by the code repository) used daily.
 
 ## Constraints
 
 - No own harness, connectors, embeddings, format readers or multi-tenant hosting (`docs/scope.md`).
 - Python. One server per team, one organization per server. Own accounts with email and password (decision 0009).
 - Personal project: no work data, accounts or credentials.
-- Folder permissions live in plain `.oif.toml` files. Accounts, groups, tokens and activity live in one SQLite file, which must not be inside the brain root.
+- Folder permissions live in plain `.brainfold.toml` files. Accounts, groups, tokens and activity live in one SQLite file, which must not be inside the brain root.
 - **The whole repository is in English** (author instruction, 2026-11-12): code, tool names, error codes and messages, docs, examples, `AGENTS.md`.
-- Today: 831 lines in `src/oif/`, 11 passing tests, dependencies `mcp` and `uvicorn`.
+- Today: 831 lines in `src/brainfold/`, 11 passing tests, dependencies `mcp` and `uvicorn`.
 
 ## Scope
 
@@ -40,7 +40,7 @@ Strong permissions are a necessary condition, not the pitch. Being harness-agnos
 - **One process lock** around compare-version, write and git commit, for MCP and HTTP alike.
 - **Version.** Every read returns `version`, a digest of the whole file. It is required to replace, move or delete an existing file; a mismatch returns `conflict` with the current version and writes nothing. Optional for `edit` (the unique fragment already detects change). Not applicable to `append`. Creating a file that already exists fails with `already_exists`.
 - **Text and binary.** Text is valid UTF-8 with no NUL bytes; everything else is binary. Over MCP, text files can be written, edited and appended up to 1 MB. `read` returns at most 64 KB per call with `offset` and `limit` in lines and a `truncated` flag; a line longer than the cap is cut and flagged. `append` that would exceed 1 MB fails with `file_too_large` and suggests rotating the file. `search` scans text files up to 1 MB and reports how many it skipped.
-- **History in git.** `oif serve` initializes a git repository in the brain root if there is none and commits existing content. If the root already has `.git`, it is used and a warning is printed. Without git installed the server starts with a warning and every write answers `versioned: false`. Everything saved is committed, text or binary, up to the size limit. If a commit fails the operation answers `versioned: false`.
+- **History in git.** `brainfold serve` initializes a git repository in the brain root if there is none and commits existing content. If the root already has `.git`, it is used and a warning is printed. Without git installed the server starts with a warning and every write answers `versioned: false`. Everything saved is committed, text or binary, up to the size limit. If a commit fails the operation answers `versioned: false`.
 - **Activity.** Every operation over MCP or HTTP is logged, denials included.
 
 ### Layer 1: complete file operations
@@ -51,9 +51,9 @@ Tool names are English: `list`, `read`, `write`, `edit`, `append`, `move`, `dele
 - `append(path, content)` appends; creates the file if missing.
 - `move(source, destination, version)` and `delete(path, version)` for files. Write is required on both sides. Existing destination fails with `already_exists`. `move` creates intermediate folders. Moving a file into a folder with more readers is allowed to whoever can write both sides (writing into a folder already publishes to its readers, decision 0008); activity records both paths.
 - `create_folder(path, description, start_here)` and `describe_folder(path, description, start_here)`: the agent creates folders and writes their guidance where it can write. They only touch `description` and `start_here` and never change `read` or `write`. `start_here` entries are paths relative to the folder with no `..`, so guidance survives a move; the existing example's absolute entries are converted in step 2, together with the validation change.
-- **Personal folder** `/people/<alias>/`. The alias derives from the email (sanitized local part plus a short digest), is UNIQUE in the accounts database (lengthened on collision) and is assigned when the account is created. `/people` is reserved: only the server creates its direct children, and any agent operation on `/people/<x>` fails unless `<x>` is the requester's alias. The owner rule is absolute and takes precedence over any `.oif.toml`: `read` and `write` keys inside a personal folder are ignored, and the panel API rejects editing access there. The folder is created on first authenticated use. When a member is removed the folder stays on disk and becomes inaccessible, and the alias is kept as a tombstone so re-inviting the same email gets a new alias and never reopens the old folder; an administrator handles the old folder on disk. An administrator's manage listing shows the names under `/people` and nothing inside them. Moving a shared file into one's personal folder is treated like deleting it from the shared folder: it needs write there and is logged with both paths.
-- **Binary files are uploaded and downloaded by the person with a command.** `oif put <file> <path>` and `oif get <path> <dest>`. The command reads the server URL and token from `OIF_URL` and `OIF_TOKEN`, or from `~/.config/oif/config.toml` with mode 0600; it never prints them or accepts them as arguments. The guarantee is that neither the server nor the command exposes the token. An agent with a shell in that same environment could read it, like any other credential there: that boundary belongs to the harness sandbox, not to OIF. Over MCP, `read` of a binary returns type, size, version and the command to fetch it, never a URL with credentials. Default limit 25 MB per file, configurable, enforced while receiving.
-- **HTTP file routes.** `PUT` and `GET /files/<path>` accept only `Authorization: Bearer`, never the panel cookie. `GET` returns `ETag`; `PUT` over an existing file requires `If-Match`. `oif put` on an existing path fails with `already_exists` unless `--replace`, which fetches the current version and sends it; a change in between fails with `conflict`. Downloads answer with `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff` and `application/octet-stream`.
+- **Personal folder** `/people/<alias>/`. The alias derives from the email (sanitized local part plus a short digest), is UNIQUE in the accounts database (lengthened on collision) and is assigned when the account is created. `/people` is reserved: only the server creates its direct children, and any agent operation on `/people/<x>` fails unless `<x>` is the requester's alias. The owner rule is absolute and takes precedence over any `.brainfold.toml`: `read` and `write` keys inside a personal folder are ignored, and the panel API rejects editing access there. The folder is created on first authenticated use. When a member is removed the folder stays on disk and becomes inaccessible, and the alias is kept as a tombstone so re-inviting the same email gets a new alias and never reopens the old folder; an administrator handles the old folder on disk. An administrator's manage listing shows the names under `/people` and nothing inside them. Moving a shared file into one's personal folder is treated like deleting it from the shared folder: it needs write there and is logged with both paths.
+- **Binary files are uploaded and downloaded by the person with a command.** `brainfold put <file> <path>` and `brainfold get <path> <dest>`. The command reads the server URL and token from `BRAINFOLD_URL` and `BRAINFOLD_TOKEN`, or from `~/.config/brainfold/config.toml` with mode 0600; it never prints them or accepts them as arguments. The guarantee is that neither the server nor the command exposes the token. An agent with a shell in that same environment could read it, like any other credential there: that boundary belongs to the harness sandbox, not to Brainfold. Over MCP, `read` of a binary returns type, size, version and the command to fetch it, never a URL with credentials. Default limit 25 MB per file, configurable, enforced while receiving.
+- **HTTP file routes.** `PUT` and `GET /files/<path>` accept only `Authorization: Bearer`, never the panel cookie. `GET` returns `ETag`; `PUT` over an existing file requires `If-Match`. `brainfold put` on an existing path fails with `already_exists` unless `--replace`, which fetches the current version and sends it; a change in between fails with `conflict`. Downloads answer with `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff` and `application/octet-stream`.
 
 ### Layer 2: the brain arrives on its own
 
@@ -67,22 +67,22 @@ Tool names are English: `list`, `read`, `write`, `edit`, `append`, `move`, `dele
 
 - **E2. The brain proposes skills.** The server stamps every `append` to a `LEARNINGS.md` with a fixed delimiter line carrying UTC date and author, and escapes any line in the appended content that looks like a delimiter. Because `write` and `edit` can still change the file, attribution is advisory, which is why the prompt treats every entry as untrusted. `list_learnings(limit=50)` returns the newest entries, newest first, from the `LEARNINGS.md` files the caller can read, each with path, author and date. A built-in skill `propose-skills`, served by `use_skill` and shipped with the server, asks the agent to find what repeats and draft a `SKILL.md`. Its text states that learnings are untrusted information written by teammates, requires the draft to cite its source entries, and requires the person's explicit confirmation before any write. The server runs no model. Nothing is published beyond the caller's own write permission.
 - **E3. The agent can move folders and delete empty folders.**
-  - `delete` accepts a folder only when the caller can read and write it, its `.oif.toml` declares neither `read` nor `write`, and it contains nothing besides its own `.oif.toml` (a `.DS_Store` is ignored and removed with it). A folder the caller cannot read answers `unavailable`, like any hidden path; anything else inside fails with `folder_not_empty`; declared access fails with `forbidden`. Files are deleted one by one, each under its own version check and each restorable (E7). (Author decision D15.)
-  - `move` accepts a folder only when the caller can read and write it, the subtree contains no symlink and no dot-entry other than `.oif.toml` (a `.DS_Store` is ignored and removed), and no `.oif.toml` in the subtree declares `read` or `write`. Folders with administrator-declared access stay with the administrator. This keeps the invariant that an agent never changes declared access; inherited access changes with the new location exactly as it does for a moved file.
+  - `delete` accepts a folder only when the caller can read and write it, its `.brainfold.toml` declares neither `read` nor `write`, and it contains nothing besides its own `.brainfold.toml` (a `.DS_Store` is ignored and removed with it). A folder the caller cannot read answers `unavailable`, like any hidden path; anything else inside fails with `folder_not_empty`; declared access fails with `forbidden`. Files are deleted one by one, each under its own version check and each restorable (E7). (Author decision D15.)
+  - `move` accepts a folder only when the caller can read and write it, the subtree contains no symlink and no dot-entry other than `.brainfold.toml` (a `.DS_Store` is ignored and removed), and no `.brainfold.toml` in the subtree declares `read` or `write`. Folders with administrator-declared access stay with the administrator. This keeps the invariant that an agent never changes declared access; inherited access changes with the new location exactly as it does for a moved file.
   - Write is required on the source parent and the destination parent. The destination must not exist, compared case-insensitively, and cannot be inside the source. The root, `/people` and its children cannot be moved or deleted. Moving anything into or out of `/people/<alias>` follows the owner rule on that side.
   - Moving a folder is not lossy, so it takes no staleness guard: files written into it by a teammate a moment earlier move with it.
   - A subtree-rule failure returns one generic code, `folder_not_movable`, without naming entries. An existing destination still answers `already_exists` and a hidden source `unavailable`. Activity records both paths.
   - Agent-visible history does not follow moves: files in a moved folder start a new history at the new path. This is stated in the tool description.
-- **E5. English everywhere.** Extended by the author to the whole repository. Code, tool names, error codes and messages, examples and current docs are translated. `AGENTS.md` is rewritten in English from the current scope, not translated line by line, and keeps the rule that conversation with the author is in Spanish. `docs/vision.md` and `docs/research/` are removed from the repository and replaced by one short English page on prior art and how OIF differs (author decision D16); they remain in git history. Every error code and every activity action name in `src/` is renamed to English; step 1 produces the full table and ends with a one-time search showing that no identifier from the fixed list of current Spanish codes and action names remains in `src/`, `tests/` or `examples/`. `docs/decisions/0007` to `0009` are translated and `0001` to `0006`, all superseded, are replaced by one English summary of superseded decisions. Main renames: `ruta_no_disponible` to `unavailable`, `sin_permiso_escritura` to `write_denied`, `archivo_demasiado_grande` to `file_too_large`, `no_autenticado` to `unauthenticated`, `sin_permiso` to `forbidden`, `metadata_invalida` to `invalid_metadata`, `solicitud_invalida` to `invalid_request`; new codes are `conflict`, `already_exists`, `folder_not_empty`, `folder_not_movable`, `no_history`, `invalid_skill`.
+- **E5. English everywhere.** Extended by the author to the whole repository. Code, tool names, error codes and messages, examples and current docs are translated. `AGENTS.md` is rewritten in English from the current scope, not translated line by line, and keeps the rule that conversation with the author is in Spanish. `docs/vision.md` and `docs/research/` are removed from the repository and replaced by one short English page on prior art and how Brainfold differs (author decision D16); they remain in git history. Every error code and every activity action name in `src/` is renamed to English; step 1 produces the full table and ends with a one-time search showing that no identifier from the fixed list of current Spanish codes and action names remains in `src/`, `tests/` or `examples/`. `docs/decisions/0007` to `0009` are translated and `0001` to `0006`, all superseded, are replaced by one English summary of superseded decisions. Main renames: `ruta_no_disponible` to `unavailable`, `sin_permiso_escritura` to `write_denied`, `archivo_demasiado_grande` to `file_too_large`, `no_autenticado` to `unauthenticated`, `sin_permiso` to `forbidden`, `metadata_invalida` to `invalid_metadata`, `solicitud_invalida` to `invalid_request`; new codes are `conflict`, `already_exists`, `folder_not_empty`, `folder_not_movable`, `no_history`, `invalid_skill`.
 - **E6. Usable across machines.**
-  - `oif serve` may listen beyond loopback only with `--public-url https://…`, meaning it runs behind a TLS-terminating proxy on the same host or network. Session cookies are then always `Secure`.
-  - **Claiming the server.** Whenever `--public-url` is set, wherever the server binds, `/api/setup` requires a setup code that `oif serve` prints at startup while no account exists. The code is single-use and stops working once an account exists. Without it the first administrator cannot be created.
+  - `brainfold serve` may listen beyond loopback only with `--public-url https://…`, meaning it runs behind a TLS-terminating proxy on the same host or network. Session cookies are then always `Secure`.
+  - **Claiming the server.** Whenever `--public-url` is set, wherever the server binds, `/api/setup` requires a setup code that `brainfold serve` prints at startup while no account exists. The code is single-use and stops working once an account exists. Without it the first administrator cannot be created.
   - **Login throttle** stays in process memory (the compose file runs exactly one server process, consistent with the single lock) and is keyed by email plus client address. The client address is taken from the proxy's forwarded header only when `--public-url` is set, and the compose file does not publish the server's own port, so clients cannot reach it directly and spoof that header.
-  - `oif put` and `oif get` refuse URLs that are neither HTTPS nor loopback.
+  - `brainfold put` and `brainfold get` refuse URLs that are neither HTTPS nor loopback.
   - A `Dockerfile` (with git installed) and a `compose.yaml` with a TLS proxy ship with the repository. The brain root and the accounts database are separate volumes owned by the server user. The server refuses to start when the database is inside the brain root.
 - **E7. History and restore.**
-  - **Revision records.** Under the write lock, every OIF change to a file (write, edit, append, move in, move out, delete, restore) adds a row to a `revisions` table in the accounts database: path, git commit, author, UTC time, change type, and a snapshot of the `read` lists that governed the path at that moment (every ancestor `.oif.toml` `read` list as it was on disk, or the personal-folder owner). Rows are only written when the commit succeeded. When a change hits a file that has no revision at that path (committed at `oif serve` start, added by hand, or never recorded), the server first commits it as it is and records a `baseline` row with the current snapshot, so the prior content is always restorable. A folder move writes a move-out and a move-in row for every file in it.
-  - **Who sees a revision.** A caller sees or restores a revision only if they would have been allowed to read the path under that revision's snapshot, evaluated with today's group membership, and they can read the path today (for a missing file: read and write on its parent folder, which must exist). Joining a group later reveals that group's earlier revisions and leaving hides them; that is intended. To keep names from being reused against old snapshots, a deleted group name cannot be recreated, and a direct email grant in a snapshot does not match revisions older than the caller's account. This replaces any git-based cut-off: reusing a path, hand-editing `.oif.toml`, widening `read` later or a pre-existing `.git` cannot expose earlier restricted content, and editing grants does not erase history for people who already had access.
+  - **Revision records.** Under the write lock, every Brainfold change to a file (write, edit, append, move in, move out, delete, restore) adds a row to a `revisions` table in the accounts database: path, git commit, author, UTC time, change type, and a snapshot of the `read` lists that governed the path at that moment (every ancestor `.brainfold.toml` `read` list as it was on disk, or the personal-folder owner). Rows are only written when the commit succeeded. When a change hits a file that has no revision at that path (committed at `brainfold serve` start, added by hand, or never recorded), the server first commits it as it is and records a `baseline` row with the current snapshot, so the prior content is always restorable. A folder move writes a move-out and a move-in row for every file in it.
+  - **Who sees a revision.** A caller sees or restores a revision only if they would have been allowed to read the path under that revision's snapshot, evaluated with today's group membership, and they can read the path today (for a missing file: read and write on its parent folder, which must exist). Joining a group later reveals that group's earlier revisions and leaving hides them; that is intended. To keep names from being reused against old snapshots, a deleted group name cannot be recreated, and a direct email grant in a snapshot does not match revisions older than the caller's account. This replaces any git-based cut-off: reusing a path, hand-editing `.brainfold.toml`, widening `read` later or a pre-existing `.git` cannot expose earlier restricted content, and editing grants does not erase history for people who already had access.
   - `history(path)` returns revision id, author, date and change type of the revisions the caller may see for that exact path: no content, no other paths, no following of moves.
   - `restore(path, revision, version)` requires write on the path (for a missing file: write on its existing parent folder; restore never creates folders), a revision the caller may see whose change type left content (not a delete or move out), and `version` when the file currently exists. It sets the file to the content at that revision's commit and records a new revision. Restoring a `SKILL.md` re-runs validation.
   - Folders are not restorable by agents. Files deleted before their folder was deleted are restorable only once a folder exists at that path again and the caller passes the snapshot rule.
@@ -100,23 +100,23 @@ Tool names are English: `list`, `read`, `write`, `edit`, `append`, `move`, `dele
 - Web panel UI: next increment.
 - Hot refresh of the prompt list inside an open session: the server is stateless.
 - Recursive folder delete and folder restore by agents (D15).
-- Exposing git history directly to agents: revisions come only from OIF's own records.
+- Exposing git history directly to agents: revisions come only from Brainfold's own records.
 - Moving the login throttle to the database: one server process is assumed.
 - Choosing a hosting provider or container registry: pending author decisions.
 
 ## Success criteria
 
 - In the example case, an agent creates a skill; in a new session a second account's `use_skill` description lists it, and that agent uses it for a matching task without being told (live check with Claude Code).
-- In OIF's own brain, a new account asks "how do we work here?" and the answer contains three facts fixed in advance (where decisions live, how tests run, what is out of scope). Activity shows only list and read calls.
+- In Brainfold's own brain, a new account asks "how do we work here?" and the answer contains three facts fixed in advance (where decisions live, how tests run, what is out of scope). Activity shows only list and read calls.
 - Two agents editing the same file lose nothing: the second gets `conflict`. A test fires simultaneous writes over MCP and HTTP.
-- A spreadsheet uploaded with `oif put` to a restricted folder downloads only with an authorized token; the panel cookie does not work on those routes.
+- A spreadsheet uploaded with `brainfold put` to a restricted folder downloads only with an authorized token; the panel cookie does not work on those routes.
 - A reader sees neither paths nor content of a previous restricted location in history, and cannot restore from it.
-- Moving a folder that contains one entry the caller cannot read or write, or one `.oif.toml` declaring access, changes nothing. Deleting a non-empty folder changes nothing.
+- Moving a folder that contains one entry the caller cannot read or write, or one `.brainfold.toml` declaring access, changes nothing. Deleting a non-empty folder changes nothing.
 - Every new operation has denial tests, and an agent can never change `read` or `write`.
 - Through the shipped compose file, with a certificate the client trusts, two accounts reach one server over HTTPS; verified locally with the proxy's own certificate authority trusted on the test machine. Use from other machines depends on the pending hosting decision.
 - On a server started with `--public-url`, `/api/setup` without the printed code creates no account.
 - After a restricted folder is removed and a new folder is created at the same path, a writer of the new folder who was not a reader of the old one sees no earlier history and cannot restore earlier content. The same holds after an administrator widens `read`, by hand or through the API.
-- Emptying and deleting a folder whose `.oif.toml` declares `read` fails at the folder delete.
+- Emptying and deleting a folder whose `.brainfold.toml` declares `read` fails at the folder delete.
 - A file deleted by an agent is restored by an agent with write on its folder, and the restored content matches.
 - The built-in `propose-skills` skill text states that learnings are untrusted, requires citing source entries and requires the person's confirmation before writing; a test asserts on that text. A learning containing a delimiter-looking line comes back as one entry.
 - The one-time search at the end of step 1 finds no Spanish identifier.
@@ -143,11 +143,11 @@ Tool names are English: `list`, `read`, `write`, `edit`, `append`, `move`, `dele
 3. Text operations: edit, append, file move and delete, folder guidance, relative `start_here`, exact-case paths, pagination. Until phase 2, a deleted file is recoverable only by an administrator with git.
 4. Personal folders with aliases and tombstones.
 5. Skills: `use_skill`, validation, trust model in instructions, stamped learnings, `list_learnings`, built-in `propose-skills`.
-6. Permission matrix test, fuller example case, OIF's own brain, live check of both scenes.
+6. Permission matrix test, fuller example case, Brainfold's own brain, live check of both scenes.
 
 **Phase 2: everything else the author accepted.**
 
-7. Binary files: byte storage, HTTP routes, `oif put` and `oif get`.
+7. Binary files: byte storage, HTTP routes, `brainfold put` and `brainfold get`.
 8. Folder move and empty-folder delete (E3).
 9. Revision records, history and restore (E7).
 10. Proxy live check, then cross-machine: `--public-url`, setup code, throttle key, container and compose (E6).
@@ -164,11 +164,11 @@ Tool names are English: `list`, `read`, `write`, `edit`, `append`, `move`, `dele
 | E1 (author) | Review before publishing; D10; decision 0008 | Write permission publishes | Proposal and approval flow | deferred | D10 "Postergar a TODOS.md" |
 | E5 (author) | English across the repository; D11 plus instruction "todo el repo debe estar en ingles" | Spanish | English across the repository | approved | D11 "Agregar", widened by the author's message |
 | E3 (author) | Agent moves and deletes folders; D12 | Files only | All-or-nothing subtree rule | approved | D12 "Agregar" |
-| E7 (author) | Restore previous version; D13 | No history tool exists | `history` + `restore` over OIF revision records with a read-list snapshot | approved | D13 "Agregar" |
+| E7 (author) | Restore previous version; D13 | No history tool exists | `history` + `restore` over Brainfold revision records with a read-list snapshot | approved | D13 "Agregar" |
 | E3-DELETE (author) | Which folders an agent deletes; D15; spec review issues 3 and 4 | All-or-nothing recursive | Empty folders only | approved | D15 "Solo carpetas vacías" |
 | E5-HISTORICAL (author) | Spanish `docs/vision.md` and `docs/research/`; D16 | In repository, Spanish | Removed, replaced by a short English prior-art page | approved | D16 "Sacar y resumir" |
 | SAFETY-FIXES (review; affects rows E2, E3, E6, E7) | Spec review rounds 1 to 3: baseline revisions, no folder creation on restore, group-name and email reuse guards, revision snapshot rule, no agent move or delete of folders with declared access, setup code under `--public-url`, stamped and untrusted learnings | Missing | Repairs needed to keep approved invariants | approved | D17 "Aprobar y seguir" |
-| E4 (author) | Downloads without a shell; D14 | `oif get` only | One-time links | deferred | D14 "Postergar a TODOS.md" |
+| E4 (author) | Downloads without a shell; D14 | `brainfold get` only | One-time links | deferred | D14 "Postergar a TODOS.md" |
 | DOCS-APPROVAL (author) | Working plan and CEO summary, including SAFETY-FIXES; D17 | Unapproved documents | These document versions | approved | D17 "Aprobar y seguir"; also signs off SAFETY-FIXES and accepts that round 3 fixes were not re-read by a reviewer |
 | REVIEW-REPAIRS (review, sections 2 to 9) | Requirements needed to keep approved invariants and operability: case-insensitive reserved names, visible commit failures, storage errors, pagination, upload outside the lock, schema versioning | Missing | Listed under "Review requirements" | approved | In scope as repairs to approved criteria under D17 ("an agent can never change read or write", "nobody else can", no silent loss) |
 | SKILL-DELIVERY (author) | How skills reach the agent; outside review finding 1; D18 | MCP prompts (person-invoked) | `use_skill` tool with a per-identity listing; no MCP prompts | approved | D18 "Herramienta use_skill" |
@@ -187,7 +187,7 @@ Approval readiness: PASS. Checked rows: APPROACH (D6), DESIGN (D7), E2 (D8), E6 
 
 ## Review requirements (Sections 1 to 10)
 
-- **R1 (security, CRITICAL).** Reserved names (`people`, a personal alias, `SKILL.md`, `LEARNINGS.md`, `.oif.toml`) are compared case-insensitively after Unicode NFC normalization, because the development file system is case-insensitive. Tests use `/PEOPLE/<alias>` and `skill.md`.
+- **R1 (security, CRITICAL).** Reserved names (`people`, a personal alias, `SKILL.md`, `LEARNINGS.md`, `.brainfold.toml`) are compared case-insensitively after Unicode NFC normalization, because the development file system is case-insensitive. Tests use `/PEOPLE/<alias>` and `skill.md`.
 - **R2 (errors, CRITICAL).** A `.git/index.lock` found at startup is never deleted, because a person may be running git there: the server refuses to start and says how to clear it. Every activity row records whether the change was versioned. `GET /api/health` reports git availability, database availability and the count of unversioned changes since start; the compose file uses it as health check.
 - **R3 (errors).** Any `OSError` while writing answers `storage_error`, removes the temporary file and is logged with path and actor. Temporary files left by a crash are removed at startup.
 - **R4 (flows).** `list` and `search` take `offset`; results stay capped and flagged.
@@ -206,10 +206,10 @@ Approval readiness: PASS. Checked rows: APPROACH (D6), DESIGN (D7), E2 (D8), E6 
 
 ## What already exists
 
-- `src/oif/brain.py`: path validation, ancestor-intersected read, nearest-folder write, list, read, write, search, skill discovery, `.oif.toml` editing, git commit per write. Reused and extended.
-- `src/oif/accounts.py`: accounts, invites, groups, tokens, login throttle, activity. Reused; gains aliases, tombstones, revisions and schema versioning.
-- `src/oif/server.py`: MCP tools, panel JSON API, cookie and bearer authentication. Reused; gains prompts, file routes and health.
-- `src/oif/cli.py`: `oif serve`. Gains `put`, `get`, `--public-url`.
+- `src/brainfold/brain.py`: path validation, ancestor-intersected read, nearest-folder write, list, read, write, search, skill discovery, `.brainfold.toml` editing, git commit per write. Reused and extended.
+- `src/brainfold/accounts.py`: accounts, invites, groups, tokens, login throttle, activity. Reused; gains aliases, tombstones, revisions and schema versioning.
+- `src/brainfold/server.py`: MCP tools, panel JSON API, cookie and bearer authentication. Reused; gains prompts, file routes and health.
+- `src/brainfold/cli.py`: `brainfold serve`. Gains `put`, `get`, `--public-url`.
 
 ## Dream state delta
 
@@ -219,20 +219,20 @@ After this plan the brain is complete for agents on harnesses with a shell: full
 
 | Codepath | What can go wrong | Error | Rescued | Rescue action | Caller sees |
 |---|---|---|---|---|---|
-| any path argument | invalid, hidden, denied, wrong kind | `OIFError unavailable` | yes | none; uniform answer | "path not available" |
-| `write`, `move`, `delete`, `restore`, `PUT /files` | stale or missing `version` | `OIFError conflict` | yes | nothing written; current version returned | conflict with current version |
-| `write`, `move` | target exists without `version` | `OIFError already_exists` | yes | nothing written | already exists |
-| `edit` | fragment missing or not unique | `OIFError invalid_edit` | yes | nothing written | which of the two |
+| any path argument | invalid, hidden, denied, wrong kind | `BrainfoldError unavailable` | yes | none; uniform answer | "path not available" |
+| `write`, `move`, `delete`, `restore`, `PUT /files` | stale or missing `version` | `BrainfoldError conflict` | yes | nothing written; current version returned | conflict with current version |
+| `write`, `move` | target exists without `version` | `BrainfoldError already_exists` | yes | nothing written | already exists |
+| `edit` | fragment missing or not unique | `BrainfoldError invalid_edit` | yes | nothing written | which of the two |
 | any write | disk full, permission error | `OSError` to `storage_error` | yes (R3) | temp file removed, logged | storage error, retry later |
 | any write | git missing, lock stale, commit fails | subprocess non-zero | yes (R2) | file kept, `versioned: false`, activity flag, health counter | success with `versioned: false` |
 | `PUT /files` | body over limit, client disconnects | size check, `ClientDisconnect` | yes | temp file removed | 413, or nothing |
-| `SKILL.md` result | missing front matter | `OIFError invalid_skill` | yes | nothing written | expected format |
+| `SKILL.md` result | missing front matter | `BrainfoldError invalid_skill` | yes | nothing written | expected format |
 | folder `move`, `delete` | subtree rule, not empty, declared access | `folder_not_movable`, `folder_not_empty`, `forbidden` | yes | nothing changed | generic code |
-| `history`, `restore` | no git, no visible revision, foreign revision | `OIFError no_history` | yes | none | no history |
+| `history`, `restore` | no git, no visible revision, foreign revision | `BrainfoldError no_history` | yes | none | no history |
 | `use_skill` listing | unreadable or invalid `SKILL.md` | skipped | yes | omitted, list continues | shorter list |
 | accounts database | locked or corrupt | `sqlite3.Error` | partial | request fails with `storage_error`; health reports database down | storage error |
-| `.oif.toml` | malformed | `ValueError` | yes | fails closed | path not available |
-| `/api/setup` with `--public-url` | missing or wrong code | `OIFError forbidden` | yes | no account created | forbidden |
+| `.brainfold.toml` | malformed | `ValueError` | yes | fails closed | path not available |
+| `/api/setup` with `--public-url` | missing or wrong code | `BrainfoldError forbidden` | yes | no account created | forbidden |
 
 ## Failure modes registry
 
@@ -258,7 +258,7 @@ No row is unrescued, untested and silent. Two rows are unknowns owned by live ch
 ```
 System
   harness (Claude Code, Codex, ...)          person's shell            browser (later: panel)
-        | MCP over HTTP, Bearer                | oif put / oif get         | cookie
+        | MCP over HTTP, Bearer                | brainfold put / brainfold get         | cookie
         v                                      v                           v
   +---------------------------------- server.py (one process) -------------------------------+
   |  MCP tools (use_skill lists skills per identity)    /files (Bearer only)   /api   /health |
@@ -268,7 +268,7 @@ System
               paths, ACL, text/binary, folders          users, aliases, tombstones, groups,
                                   |                      tokens, activity, revisions
                      brain root on disk  <-- git commit per change
-                     (.oif.toml per folder)
+                     (.brainfold.toml per folder)
 
 Write flow, with shadow paths
   input -> authenticate -> canonical path -> ACL -> [lock] compare version -> temp file -> rename -> git commit -> revision row -> activity [unlock] -> answer
@@ -297,65 +297,65 @@ T1 to T11 are phase 1; T12 to T16 are phase 2.
 
 - [x] **T1 (P1, human: ~3h / CC: ~1h)** — server — Spike: use_skill tool with a per-identity description, checked live in Claude Code
   - Surfaced by: Outside review 1 and 2; D18
-  - Files: src/oif/server.py
+  - Files: src/brainfold/server.py
   - Verify: New Claude Code session with a second account lists a skill created by the first and uses it unprompted
-  - Done 2026-11-12: one account wrote `/skills/cierre-mensual/SKILL.md`; a fresh headless Claude Code 2.1.322 session for a second account, given a matching task with no mention of skills, called `use_skill` and followed the procedure (activity row `usar_skill`, output carried the skill's marker line). A first run showed the tool description is deferred, so the listing was moved into the per-identity server instructions. Code: `src/oif/server.py`, test in `tests/test_server.py`.
+  - Done 2026-11-12: one account wrote `/skills/cierre-mensual/SKILL.md`; a fresh headless Claude Code 2.1.322 session for a second account, given a matching task with no mention of skills, called `use_skill` and followed the procedure (activity row `usar_skill`, output carried the skill's marker line). A first run showed the tool description is deferred, so the listing was moved into the per-identity server instructions. Code: `src/brainfold/server.py`, test in `tests/test_server.py`.
 - [x] **T2 (P1, human: ~2d / CC: ~1h)** — repo — Translate the repository to English, freeze tool names and error codes, remove historical docs, add prior-art page, update scope and decisions
   - Surfaced by: E5; D11, D16; R10, R15
-  - Files: src/oif/, tests/, examples/, docs/, AGENTS.md, README.md
+  - Files: src/brainfold/, tests/, examples/, docs/, AGENTS.md, README.md
   - Verify: One-time search for the fixed Spanish identifier list returns nothing; `uv run pytest -q` passes
 - [x] **T3 (P1, human: ~3d / CC: ~1.5h)** — brain — One lock, worker-thread execution, versions and conflict errors
   - Surfaced by: Common write rules; R5, R12
-  - Files: src/oif/brain.py, src/oif/server.py, tests/test_brain.py
+  - Files: src/brainfold/brain.py, src/brainfold/server.py, tests/test_brain.py
   - Verify: Barrier test with simultaneous writers: second gets `conflict`
 - [x] **T4 (P1, human: ~2d / CC: ~1h)** — brain — Hardened git: init, timeout, no user config or hooks, path-limited commit, refuse foreign index lock, baseline on divergent content
   - Surfaced by: R2, R11, R13
-  - Files: src/oif/brain.py, src/oif/cli.py, tests/test_brain.py
+  - Files: src/brainfold/brain.py, src/brainfold/cli.py, tests/test_brain.py
   - Verify: Tests: commit with a hanging hook times out; staged foreign file is not committed; divergent content is committed before change
 - [x] **T5 (P1, human: ~2d / CC: ~1h)** — server — Health endpoint, versioned flag in activity, storage_error mapping, startup temp cleanup, schema versioning
   - Surfaced by: R2, R3, R6
-  - Files: src/oif/server.py, src/oif/accounts.py, tests/test_server.py
+  - Files: src/brainfold/server.py, src/brainfold/accounts.py, tests/test_server.py
   - Verify: `GET /api/health` reports git and database; simulated `OSError` answers `storage_error` and leaves no temp file
 - [x] **T6 (P1, human: ~4d / CC: ~2h)** — brain — Text operations: edit, append, file move and delete, create_folder, describe_folder, relative start_here, exact-case paths, pagination, text limits
   - Surfaced by: Layer 1; R4, R14
-  - Files: src/oif/brain.py, src/oif/server.py, examples/brain/, tests/test_brain.py
+  - Files: src/brainfold/brain.py, src/brainfold/server.py, examples/brain/, tests/test_brain.py
   - Verify: Unit tests per operation including denial, case-variant path and offset
 - [x] **T7 (P1, human: ~2d / CC: ~1h)** — accounts — Personal folders: unique alias, reserved /people, owner rule, alias tombstones
   - Surfaced by: Layer 1 personal folder; R1, R7
-  - Files: src/oif/accounts.py, src/oif/brain.py, src/oif/server.py, tests/
+  - Files: src/brainfold/accounts.py, src/brainfold/brain.py, src/brainfold/server.py, tests/
   - Verify: Tests: `/PEOPLE/<alias>` denied, re-invited email gets a new alias, panel cannot edit access under `/people`
 - [x] **T8 (P1, human: ~2d / CC: ~1h)** — server — Skills: use_skill with per-identity listing, SKILL.md validation, trust model in instructions, remove list_skills
   - Surfaced by: D18; skill trust model
-  - Files: src/oif/server.py, src/oif/brain.py, tests/test_server.py
+  - Files: src/brainfold/server.py, src/brainfold/brain.py, tests/test_server.py
   - Verify: Tool listing differs per identity; invalid `SKILL.md` skipped; write of invalid `SKILL.md` answers `invalid_skill`
 - [x] **T9 (P1, human: ~1d / CC: ~30min)** — server — Learnings: stamped append, list_learnings, built-in propose-skills skill
   - Surfaced by: E2; D8
-  - Files: src/oif/brain.py, src/oif/server.py, tests/
+  - Files: src/brainfold/brain.py, src/brainfold/server.py, tests/
   - Verify: A learning containing a delimiter-looking line returns as one entry; skill text asserts untrusted, cite, confirm
 - [x] **T10 (P1, human: ~2d / CC: ~40min)** — tests — Permission matrix test: every tool against every permission situation
   - Surfaced by: R8
   - Files: tests/test_matrix.py
   - Verify: `uv run pytest -q tests/test_matrix.py`
-- [x] **T11 (P1, human: ~2d / CC: ~1h)** — examples — Fuller example case, OIF's own brain in brain/, live check of both scenes
+- [x] **T11 (P1, human: ~2d / CC: ~1h)** — examples — Fuller example case, Brainfold's own brain in brain/, live check of both scenes
   - Surfaced by: Premise 6; success criteria 1 and 2
   - Files: examples/brain/, .gitignore
   - Verify: Activity log shows only list and read for the day-one question; answer contains the three fixed facts
-  - Done 2026-11-12 on a copy of OIF's own brain (`brain/`, ignored by this repository), with fresh headless Claude Code 2.1.322 sessions for a newly invited account. Day one: asked only "how do we work here?", the answer named `docs/decisions`, `uv run pytest` and the out-of-scope harness; activity showed list, read and one read-only `list_learnings`. Spreading skill: another account wrote `/skills/release-notes/SKILL.md`; the new account asked for release notes without mentioning skills, the agent called `use_skill` first and the output carried the skill's reference code and closing sentence. One run each; frequency was not measured. The example case in `examples/brain/` was translated but not made fuller.
-- [x] **T12 (P2, human: ~4d / CC: ~2h)** — server — Binary files: byte storage, /files routes with ETag and If-Match, oif put and oif get
+  - Done 2026-11-12 on a copy of Brainfold's own brain (`brain/`, ignored by this repository), with fresh headless Claude Code 2.1.322 sessions for a newly invited account. Day one: asked only "how do we work here?", the answer named `docs/decisions`, `uv run pytest` and the out-of-scope harness; activity showed list, read and one read-only `list_learnings`. Spreading skill: another account wrote `/skills/release-notes/SKILL.md`; the new account asked for release notes without mentioning skills, the agent called `use_skill` first and the output carried the skill's reference code and closing sentence. One run each; frequency was not measured. The example case in `examples/brain/` was translated but not made fuller.
+- [x] **T12 (P2, human: ~4d / CC: ~2h)** — server — Binary files: byte storage, /files routes with ETag and If-Match, brainfold put and brainfold get
   - Surfaced by: Layer 1 binary files; phase 2
-  - Files: src/oif/brain.py, src/oif/server.py, src/oif/cli.py, tests/
+  - Files: src/brainfold/brain.py, src/brainfold/server.py, src/brainfold/cli.py, tests/
   - Verify: Upload to a restricted folder downloads only with an authorized token; cookie rejected
 - [x] **T13 (P2, human: ~2d / CC: ~1h)** — brain — Folder move and empty-folder delete
   - Surfaced by: E3; D12, D15
-  - Files: src/oif/brain.py, src/oif/server.py, tests/
+  - Files: src/brainfold/brain.py, src/brainfold/server.py, tests/
   - Verify: Move with one hidden entry or declared access changes nothing; non-empty delete changes nothing
 - [x] **T14 (P2, human: ~5d / CC: ~3h)** — accounts — Revision records with read-list snapshot, history, restore, group-name and email reuse guards
   - Surfaced by: E7; D13; SAFETY-FIXES
-  - Files: src/oif/accounts.py, src/oif/brain.py, src/oif/server.py, tests/
+  - Files: src/brainfold/accounts.py, src/brainfold/brain.py, src/brainfold/server.py, tests/
   - Verify: Path reuse and widened read expose no earlier revision; deleted file restores with matching content
 - [x] **T15 (P2, human: ~4d / CC: ~2h)** — deploy — Proxy live check, then --public-url, setup code, throttle key, Dockerfile and compose
   - Surfaced by: E6; D9; open question 2
-  - Files: src/oif/cli.py, src/oif/server.py, src/oif/accounts.py, Dockerfile, compose.yaml, tests/
+  - Files: src/brainfold/cli.py, src/brainfold/server.py, src/brainfold/accounts.py, Dockerfile, compose.yaml, tests/
   - Verify: Compose with locally trusted certificate: two accounts over HTTPS; setup without code creates no account
   - Done 2026-11-12: image built and run with the shipped `compose.yaml` on a spare local port. Over HTTPS through the proxy: health reported git and database up, setup without the printed code answered 403 and with it 200, the session cookie was `Secure`, MCP tool calls were accepted, and the server's own port was not published. Not verified: a real domain and certificate, a second machine, and the container reaching the `healthy` state (it was checked while still `starting`).
 - [ ] **T16 (P3, human: ~1d / CC: ~30min)** — release — CI and publication of package and image, after name, license, remote repository and registry are decided
@@ -393,11 +393,11 @@ Full record in the CEO plan at `~/.gstack/projects/oif/ceo-plans/2026-11-12-core
 ## Reality rows
 
 ```
-REALITY: premise-table finding 5 claims, unverified=1 (harness re-reads per-identity tool descriptions each session: no live check yet; owned by T1) src/oif/brain.py:173
-REALITY: already-done finding skill listing and basic write exist; nothing else in the plan is built (single commit 3776e3e, no remote) src/oif/brain.py:254
-REALITY: surface-check pass `oif serve` and `/api/folder` exist; `oif put`, `oif get`, `/files`, `/api/health` are new surface src/oif/cli.py:28
+REALITY: premise-table finding 5 claims, unverified=1 (harness re-reads per-identity tool descriptions each session: no live check yet; owned by T1) src/brainfold/brain.py:173
+REALITY: already-done finding skill listing and basic write exist; nothing else in the plan is built (single commit 3776e3e, no remote) src/brainfold/brain.py:254
+REALITY: surface-check pass `brainfold serve` and `/api/folder` exist; `brainfold put`, `brainfold get`, `/files`, `/api/health` are new surface src/brainfold/cli.py:28
 REALITY: binding-decisions finding decision 0008 excludes a review-and-approval engine; E1 stays deferred, not reintroduced docs/scope.md:32
-REALITY: numbers pass 831 lines [measured: wc -l src/oif/*.py]; 11 tests [measured: uv run pytest -q]; limits 64 KB, 1 MB, 25 MB [estimated] src/oif/brain.py:28
+REALITY: numbers pass 831 lines [measured: wc -l src/brainfold/*.py]; 11 tests [measured: uv run pytest -q]; limits 64 KB, 1 MB, 25 MB [estimated] src/brainfold/brain.py:28
 REALITY: deferred-asks pass no linked issue docs/designs/core-permissioned-memory.md:1
 REALITY: pr-count pass no ship policy and no remote; two phases by author decision D19 docs/designs/core-permissioned-memory.md:135
 PLAN_REALITY: phase=ceo rows=7/7 missing=none unverified=1 verdict=complete

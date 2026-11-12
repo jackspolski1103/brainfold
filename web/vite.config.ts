@@ -5,6 +5,6 @@ import { defineConfig } from "vite";
 // The build lands inside the Python package, which serves it at "/".
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  build: { outDir: "../src/oif/panel", emptyOutDir: true },
+  build: { outDir: "../src/brainfold/panel", emptyOutDir: true },
   server: { proxy: { "/api": "http://127.0.0.1:8020" } },
 });

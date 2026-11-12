@@ -1,6 +1,6 @@
 """Shared brain: real folders and files with per-folder permissions.
 
-Each folder may carry a `.oif.toml` with `description`, `start_here`, `read` and `write`.
+Each folder may carry a `.brainfold.toml` with `description`, `start_here`, `read` and `write`.
 Grants are member emails, `@group` or `*`. Read is intersected down the tree and denied
 unless some ancestor grants it; write follows the nearest folder that declares it and is
 denied by default. `/people/<alias>` is reserved: only its owner reads or writes it.
@@ -26,7 +26,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from oif import OIFError
+from brainfold import BrainfoldError
 
 GRANT = re.compile(r"\*|@[a-z0-9][a-z0-9_-]{0,62}|[^@\s]+@[^@\s]+")
 MAX_PATH_BYTES = 1024
@@ -36,13 +36,13 @@ MAX_READ_BYTES = 65_536  # text returned by one read call
 MAX_TEXT_BYTES = 1_048_576  # text file size writable and searchable over MCP
 MAX_SEARCH_HITS = 50
 PEOPLE = "people"
-LEARNING = "<!-- oif:learning "
+LEARNING = "<!-- brainfold:learning "
 GIT_TIMEOUT = 20
 
 
-def _unavailable() -> OIFError:
+def _unavailable() -> BrainfoldError:
     # Same public error for an invalid path, wrong kind, absence or denial.
-    return OIFError("unavailable", "The path is not available.")
+    return BrainfoldError("unavailable", "The path is not available.")
 
 
 def _canonical(path: str) -> bool:
@@ -93,7 +93,7 @@ def _locked(method: Callable[..., Any]) -> Callable[..., Any]:
                 return method(self, *args, **kwargs)
             except OSError:
                 self._clean()
-                raise OIFError("storage_error", "Storage failed. Try again later.") from None
+                raise BrainfoldError("storage_error", "Storage failed. Try again later.") from None
 
     return wrapper
 
@@ -114,7 +114,7 @@ class Brain:
         self.max_file_bytes = max_file_bytes
         self.root = root.resolve(strict=True)
         if not self.root.is_dir():
-            raise OIFError("invalid_configuration", "The brain root is not a folder.")
+            raise BrainfoldError("invalid_configuration", "The brain root is not a folder.")
         # ponytail: one lock for reads and writes; split when read throughput matters.
         self._lock = threading.RLock()
         self.unversioned = 0  # writes since start that git did not record
@@ -152,7 +152,7 @@ class Brain:
     @staticmethod
     def _meta(directory: Path) -> dict[str, Any]:
         try:
-            return tomllib.loads((directory / ".oif.toml").read_text("utf-8"))
+            return tomllib.loads((directory / ".brainfold.toml").read_text("utf-8"))
         except FileNotFoundError:
             return {}
         except (OSError, ValueError):  # unreadable or malformed metadata fails closed
@@ -189,7 +189,7 @@ class Brain:
             if len(parts) == 1:
                 return read, False  # only the server creates personal folders
             owner = parts[1] == self.alias(who)
-            return owner, owner  # absolute: no `.oif.toml` widens or narrows it
+            return owner, owner  # absolute: no `.brainfold.toml` widens or narrows it
         return read, read and write
 
     def _writable(self, who: str, path: str) -> Path:
@@ -198,12 +198,12 @@ class Brain:
         if not read:
             raise _unavailable()
         if not write:
-            raise OIFError("write_denied", "You do not have write permission on this path.")
+            raise BrainfoldError("write_denied", "You do not have write permission on this path.")
         return target
 
     # --- git ------------------------------------------------------------------------
 
-    def _git_output(self, *args: str, author: str = "oif") -> bytes | None:
+    def _git_output(self, *args: str, author: str = "brainfold") -> bytes | None:
         """Run git with no user configuration, hooks, signing or prompt, and a time limit."""
         env = {
             **os.environ,
@@ -227,12 +227,12 @@ class Brain:
             return None
         return done.stdout if done.returncode == 0 else None
 
-    def _git(self, *args: str, author: str = "oif") -> bool:
+    def _git(self, *args: str, author: str = "brainfold") -> bool:
         return self._git_output(*args, author=author) is not None
 
     def _start_git(self) -> bool:
         if (self.root / ".git" / "index.lock").exists():
-            raise OIFError(
+            raise BrainfoldError(
                 "invalid_configuration",
                 "The brain's git repository is locked. If no git command is running there, "
                 "remove .git/index.lock and start again.",
@@ -240,7 +240,7 @@ class Brain:
         if not (self.root / ".git").exists() and not self._git("init", "-q"):
             return False  # git is not installed: the server works without history
         self._git("add", "-A")
-        self._git("commit", "-q", "-m", "oif: record existing content")
+        self._git("commit", "-q", "-m", "brainfold: record existing content")
         return self._git("rev-parse", "--git-dir")
 
     def _commit(self, who: str, message: str, *targets: Path) -> bool:
@@ -291,21 +291,21 @@ class Brain:
             return
         relative = str(target.relative_to(self.root))
         self._git("add", "--", relative)
-        self._git("commit", "-q", "-m", f"oif: baseline {relative}", "--", relative)
-        if self.journal and target.name != ".oif.toml":
+        self._git("commit", "-q", "-m", f"brainfold: baseline {relative}", "--", relative)
+        if self.journal and target.name != ".brainfold.toml":
             current = _version(target.read_bytes())
             rows = self.journal.revisions(self._path(target))
             if not rows or rows[-1]["version"] != current:
-                self._record("oif", [(target, "baseline", current, self._snapshot(target))])
+                self._record("brainfold", [(target, "baseline", current, self._snapshot(target))])
 
     def _clean(self) -> None:
-        for leftover in self.root.rglob(".*.oif-tmp"):
+        for leftover in self.root.rglob(".*.brainfold-tmp"):
             if ".git" not in leftover.parts:
                 leftover.unlink(missing_ok=True)
 
     def _store(self, target: Path, data: bytes) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
-        temporary = target.with_name(f".{target.name}.oif-tmp")
+        temporary = target.with_name(f".{target.name}.brainfold-tmp")
         temporary.write_bytes(data)
         os.replace(temporary, target)
 
@@ -338,7 +338,7 @@ class Brain:
                         entry["description"] = description
                     if manage:
                         entry |= {"read": child_meta.get("read"), "write": child_meta.get("write")}
-            except OIFError:
+            except BrainfoldError:
                 continue
             entries.append(entry)
         start = max(0, offset)
@@ -379,7 +379,7 @@ class Brain:
         if len(data) > MAX_TEXT_BYTES or not _is_text(data):
             return result | {
                 "kind": "binary",
-                "fetch": f"Run in a shell: oif get {path} <local destination>",
+                "fetch": f"Run in a shell: brainfold get {path} <local destination>",
             }
         lines = data.decode("utf-8").splitlines(keepends=True)
         start = max(0, offset)
@@ -408,7 +408,7 @@ class Brain:
         """Every file the caller can read; nothing if they cannot even read the root."""
         try:
             return self._walk(who)
-        except OIFError:
+        except BrainfoldError:
             return []
 
     def _walk(self, who: str, path: str = "/") -> list[str]:
@@ -431,7 +431,7 @@ class Brain:
     def search(self, who: str, query: str, path: str = "/", offset: int = 0) -> dict[str, Any]:
         needle = query.casefold().strip()
         if not needle:
-            raise OIFError("empty_query", "Provide text to search for.")
+            raise BrainfoldError("empty_query", "Provide text to search for.")
         hits: list[dict[str, Any]] = []
         skipped = 0
         # ponytail: linear scan of readable files; add an index when the brain grows.
@@ -487,29 +487,29 @@ class Brain:
     def _check_version(self, target: Path, version: str | None) -> None:
         if not target.exists():
             if version is not None:
-                raise OIFError("conflict", "The file no longer exists.")
+                raise BrainfoldError("conflict", "The file no longer exists.")
             return
         if target.is_dir():
             raise _unavailable()
         current = _version(target.read_bytes())
         if version is None:
-            raise OIFError(
+            raise BrainfoldError(
                 "already_exists", f"The file exists. Pass its version to replace it: {current}"
             )
         if version != current:
-            raise OIFError("conflict", f"The file changed. Current version: {current}")
+            raise BrainfoldError("conflict", f"The file changed. Current version: {current}")
 
     def _put(self, who: str, target: Path, text: str, action: str) -> dict[str, Any]:
         try:
             data = text.encode("utf-8")
         except UnicodeEncodeError:
-            raise OIFError("invalid_content", "The content is not valid text.") from None
+            raise BrainfoldError("invalid_content", "The content is not valid text.") from None
         if len(data) > MAX_TEXT_BYTES:
-            raise OIFError(
+            raise BrainfoldError(
                 "file_too_large", "Text files are limited to 1 MB. Split or rotate the file."
             )
         if target.name == "SKILL.md" and not _front_matter(data):
-            raise OIFError(
+            raise BrainfoldError(
                 "invalid_skill",
                 "A SKILL.md must start with front matter: a line '---', then 'name: ...' and "
                 "'description: ...', then a line '---'.",
@@ -540,12 +540,12 @@ class Brain:
             raise _unavailable()
         data = target.read_bytes()
         if len(data) > MAX_TEXT_BYTES or not _is_text(data):
-            raise OIFError("invalid_edit", "Only text files can be edited.")
+            raise BrainfoldError("invalid_edit", "Only text files can be edited.")
         text = data.decode("utf-8")
         count = text.count(old)
         if count != 1:
             reason = "was not found" if count == 0 else f"appears {count} times; make it unique"
-            raise OIFError("invalid_edit", f"The fragment {reason}.")
+            raise BrainfoldError("invalid_edit", f"The fragment {reason}.")
         return self._put(who, target, text.replace(old, new), "edit")
 
     @_locked
@@ -556,14 +556,14 @@ class Brain:
             raise _unavailable()
         data = target.read_bytes() if target.exists() else b""
         if not _is_text(data):
-            raise OIFError("invalid_edit", "Only text files can be appended to.")
+            raise BrainfoldError("invalid_edit", "Only text files can be appended to.")
         text = data.decode("utf-8")
         if text and not text.endswith("\n"):
             text += "\n"
         if target.name == "LEARNINGS.md":
             stamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
             # A line that looks like a stamp inside the content must not split the entry.
-            safe = content.replace(LEARNING, "<!-- oif-learning ")
+            safe = content.replace(LEARNING, "<!-- brainfold-learning ")
             content = f"{LEARNING}{stamp} {who} -->\n{safe}"
         return self._put(who, target, text + content.rstrip("\n") + "\n", "append")
 
@@ -571,18 +571,20 @@ class Brain:
         """Files of a folder an agent may move: nothing hidden, nothing with declared access."""
         parts = self._parts(folder)
         if not parts or parts[0] == PEOPLE and len(parts) <= 2:
-            raise OIFError("folder_not_movable", "This folder cannot be moved.")
+            raise BrainfoldError("folder_not_movable", "This folder cannot be moved.")
         files = []
         for entry in folder.rglob("*"):
             if entry.name == ".DS_Store":
                 entry.unlink()
-            elif entry.is_symlink() or (entry.name.startswith(".") and entry.name != ".oif.toml"):
-                raise OIFError("folder_not_movable", "This folder cannot be moved.")
-            elif entry.is_file() and entry.name != ".oif.toml":
+            elif entry.is_symlink() or (
+                entry.name.startswith(".") and entry.name != ".brainfold.toml"
+            ):
+                raise BrainfoldError("folder_not_movable", "This folder cannot be moved.")
+            elif entry.is_file() and entry.name != ".brainfold.toml":
                 files.append(entry)
         for holder in (folder, *(entry for entry in folder.rglob("*") if entry.is_dir())):
             if {"read", "write"} & self._meta(holder).keys():
-                raise OIFError("folder_not_movable", "This folder cannot be moved.")
+                raise BrainfoldError("folder_not_movable", "This folder cannot be moved.")
         return files
 
     @_locked
@@ -595,10 +597,10 @@ class Brain:
         origin = self._writable(who, source)
         target = self._writable(who, destination)
         if target.exists():
-            raise OIFError("already_exists", "The destination already exists.")
+            raise BrainfoldError("already_exists", "The destination already exists.")
         if origin.is_dir():
             if target.is_relative_to(origin):
-                raise OIFError("folder_not_movable", "A folder cannot move into itself.")
+                raise BrainfoldError("folder_not_movable", "A folder cannot move into itself.")
             files = self._movable(origin)
             for file in files:
                 self._baseline(file)
@@ -620,10 +622,10 @@ class Brain:
         if not origin.is_file():
             raise _unavailable()
         if version is None:
-            raise OIFError("conflict", "Pass the version of the file you are moving.")
+            raise BrainfoldError("conflict", "Pass the version of the file you are moving.")
         self._check_version(origin, version)
         if target.name == "SKILL.md" and not _front_matter(origin.read_bytes()):
-            raise OIFError("invalid_skill", "The file is not a valid SKILL.md.")
+            raise BrainfoldError("invalid_skill", "The file is not a valid SKILL.md.")
         self._baseline(origin)
         leaving = [(origin, "move_out", None, self._snapshot(origin))]
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -639,12 +641,12 @@ class Brain:
         brought back with restore; a folder must be emptied file by file first."""
         target = self._writable(who, path)
         if target.is_dir():
-            meta = target / ".oif.toml"
+            meta = target / ".brainfold.toml"
             if target == self.root or {"read", "write"} & self._meta(target).keys():
-                raise OIFError("forbidden", "Only an administrator can delete this folder.")
+                raise BrainfoldError("forbidden", "Only an administrator can delete this folder.")
             (target / ".DS_Store").unlink(missing_ok=True)
-            if any(entry.name != ".oif.toml" for entry in target.iterdir()):
-                raise OIFError("folder_not_empty", "Delete or move its files first.")
+            if any(entry.name != ".brainfold.toml" for entry in target.iterdir()):
+                raise BrainfoldError("folder_not_empty", "Delete or move its files first.")
             self._movable(target)  # personal folders themselves stay
             meta.unlink(missing_ok=True)
             target.rmdir()
@@ -652,7 +654,7 @@ class Brain:
         if not target.is_file():
             raise _unavailable()
         if version is None:
-            raise OIFError("conflict", "Pass the version of the file you are deleting.")
+            raise BrainfoldError("conflict", "Pass the version of the file you are deleting.")
         self._check_version(target, version)
         self._baseline(target)
         snapshot = self._snapshot(target)
@@ -676,11 +678,11 @@ class Brain:
         if target.is_dir() or target == self.root:
             raise _unavailable()
         if source.stat().st_size > self.max_file_bytes:
-            raise OIFError("file_too_large", "The file exceeds the upload limit.")
+            raise BrainfoldError("file_too_large", "The file exceeds the upload limit.")
         self._check_version(target, version)
         data = source.read_bytes()
         if target.name == "SKILL.md" and not _front_matter(data):
-            raise OIFError("invalid_skill", "The file is not a valid SKILL.md.")
+            raise BrainfoldError("invalid_skill", "The file is not a valid SKILL.md.")
         self._baseline(target)
         target.parent.mkdir(parents=True, exist_ok=True)
         os.replace(source, target)
@@ -718,7 +720,7 @@ class Brain:
         """Who changed this path and when. No content, no other paths, no following moves."""
         rows = self._visible(who, path)
         if not rows:
-            raise OIFError("no_history", "There is no history you can see for this path.")
+            raise BrainfoldError("no_history", "There is no history you can see for this path.")
         return {
             "path": path,
             "revisions": [
@@ -740,14 +742,14 @@ class Brain:
         target = self._writable(who, path)
         row = next((row for row in self._visible(who, path) if row["id"] == revision), None)
         if row is None or row["kind"] in {"delete", "move_out"} or not target.parent.is_dir():
-            raise OIFError("no_history", "That revision cannot be restored.")
+            raise BrainfoldError("no_history", "That revision cannot be restored.")
         self._check_version(target, version)
         relative = str(target.relative_to(self.root))
         data = self._git_output("show", f"{row['commit']}:{relative}")
         if data is None:  # someone rewrote the repository's history
-            raise OIFError("no_history", "That revision is no longer in the repository.")
+            raise BrainfoldError("no_history", "That revision is no longer in the repository.")
         if target.name == "SKILL.md" and not _front_matter(data):
-            raise OIFError("invalid_skill", "That revision is not a valid SKILL.md.")
+            raise BrainfoldError("invalid_skill", "That revision is not a valid SKILL.md.")
         self._baseline(target)
         self._store(target, data)
         digest = _version(data)
@@ -772,7 +774,7 @@ class Brain:
             )
         )
         if not valid:
-            raise OIFError(
+            raise BrainfoldError(
                 "invalid_metadata",
                 "The description must be text and start_here a list of paths relative to the "
                 "folder.",
@@ -786,12 +788,12 @@ class Brain:
             if tomllib.loads(text) != meta:
                 raise ValueError
         except ValueError:
-            raise OIFError("invalid_metadata", "The description is not valid.") from None
+            raise BrainfoldError("invalid_metadata", "The description is not valid.") from None
         target.mkdir(parents=True, exist_ok=True)
-        self._baseline(target / ".oif.toml")
-        self._store(target / ".oif.toml", text.encode("utf-8"))
+        self._baseline(target / ".brainfold.toml")
+        self._store(target / ".brainfold.toml", text.encode("utf-8"))
         path = self._path(target)
-        versioned = self._commit(who, f"describe {path}", target / ".oif.toml")
+        versioned = self._commit(who, f"describe {path}", target / ".brainfold.toml")
         return {"path": path, "versioned": versioned}
 
     @_locked
@@ -800,7 +802,7 @@ class Brain:
     ) -> dict[str, Any]:
         target = self._writable(who, path)
         if target.exists():
-            raise OIFError("already_exists", "The path already exists.")
+            raise BrainfoldError("already_exists", "The path already exists.")
         return self._guide(who, target, description, start_here or [], {})
 
     @_locked
@@ -832,7 +834,7 @@ class Brain:
             raise _unavailable()  # personal folders belong to their owner, always
         grants = [*(read or []), *(write or [])]
         if not all(isinstance(item, str) and GRANT.fullmatch(item) for item in grants):
-            raise OIFError("invalid_metadata", "The access lists are not valid.")
+            raise BrainfoldError("invalid_metadata", "The access lists are not valid.")
         keep = {
             key: value for key, value in (("read", read), ("write", write)) if value is not None
         }
@@ -843,7 +845,7 @@ class Brain:
         """Create the caller's personal folder on first use. Only the server does this."""
         alias = self.alias(who)
         if alias and not (self.root / PEOPLE / alias).is_dir():
-            self._guide("oif", self.root / PEOPLE / alias, f"Private notes of {who}.", [], {})
+            self._guide("brainfold", self.root / PEOPLE / alias, f"Private notes of {who}.", [], {})
 
 
 def _front_matter(data: bytes) -> dict[str, str]:

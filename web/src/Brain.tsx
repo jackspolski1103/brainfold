@@ -165,7 +165,7 @@ export function Brain({ admin, kind, path }: { admin: boolean; kind: "folder" | 
           ) : (
             <div className="space-y-3">
               <p className="text-sm">This file is not text. The panel does not download files; fetch it from a terminal:</p>
-              <Copyable text={`oif get ${file.path} ./${name(file.path)}`} />
+              <Copyable text={`brainfold get ${file.path} ./${name(file.path)}`} />
             </div>
           )}
         </Card>

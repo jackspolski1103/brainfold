@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from oif import OIFError
-from oif.brain import LEARNING, MAX_READ_BYTES, Brain
+from brainfold import BrainfoldError
+from brainfold.brain import LEARNING, MAX_READ_BYTES, Brain
 
 EXAMPLE = Path(__file__).parent.parent / "examples" / "brain"
 ALICE, BOB, REVIEWER, CARLA = (
@@ -64,7 +64,7 @@ def paths(listing: dict) -> list[str]:
 
 
 def code(call, *args) -> str:
-    with pytest.raises(OIFError) as error:
+    with pytest.raises(BrainfoldError) as error:
         call(*args)
     return error.value.code
 
@@ -83,7 +83,7 @@ def test_listing_guides_and_hides_what_is_not_granted(brain: Brain) -> None:
     assert paths(brain.list(ALICE, "/projects")) == ["/projects/costs"]
     assert paths(brain.list(BOB, "/projects")) == ["/projects/contracts"]
     assert paths(brain.list(BOB, "/skills")) == []
-    assert not any(".oif" in path or ".git" in path for path in paths(root))
+    assert not any(".brainfold" in path or ".git" in path for path in paths(root))
     assert brain.list(ALICE, "/", offset=1)["entries"] == root["entries"][1:]
 
 
@@ -95,12 +95,12 @@ def test_denials_are_indistinguishable_from_absence(brain: Brain) -> None:
         (BOB, brain.read, "/people/alice-1a2b/missing.md"),
         (REVIEWER, brain.list, "/people/alice-1a2b"),
         (CARLA, brain.list, "/"),
-        (ALICE, brain.read, "/.oif.toml"),
-        (ALICE, brain.read, "/common/../.oif.toml"),
+        (ALICE, brain.read, "/.brainfold.toml"),
+        (ALICE, brain.read, "/common/../.brainfold.toml"),
         (ALICE, brain.list, "/.git"),
         (ALICE, brain.read, "common/conventions.md"),
         (ALICE, brain.read, "/common//conventions.md"),
-        (ALICE, brain.read, "/common/%2e%2e/.oif.toml"),
+        (ALICE, brain.read, "/common/%2e%2e/.brainfold.toml"),
         (ALICE, brain.read, "/common\\conventions.md"),
         # Names must match the disk exactly, also on a case-insensitive file system.
         (ALICE, brain.read, "/Common/conventions.md"),
@@ -115,7 +115,7 @@ def test_symlinks_and_broken_metadata_fail_closed(brain: Brain) -> None:
     (brain.root / "common" / "leak.md").symlink_to(brain.root / "projects" / "costs" / "process.md")
     assert "/common/leak.md" not in paths(brain.list(BOB, "/common"))
     assert code(brain.read, BOB, "/common/leak.md") == "unavailable"
-    (brain.root / "common" / ".oif.toml").write_text("read = 'alice'")
+    (brain.root / "common" / ".brainfold.toml").write_text("read = 'alice'")
     assert code(brain.read, ALICE, "/common/conventions.md") == "unavailable"
 
 
@@ -146,7 +146,7 @@ def test_simultaneous_writers_never_both_win(brain: Brain) -> None:
         try:
             brain.write(ALICE, path, f"writer {number}", version)
             outcomes.append("won")
-        except OIFError as error:
+        except BrainfoldError as error:
             outcomes.append(error.code)
 
     threads = [threading.Thread(target=attempt, args=(number,)) for number in range(8)]
@@ -186,7 +186,7 @@ def test_agents_write_guidance_but_never_access(brain: Brain) -> None:
     assert code(brain.create_folder, ALICE, "/projects/costs/reports", "again") == "already_exists"
     assert code(brain.create_folder, BOB, "/projects/costs/x", "no") == "unavailable"
     assert code(brain.create_folder, ALICE, "/common/x", "no") == "write_denied"
-    for bad in (["/absolute.md"], ["../up.md"], [".oif.toml"], "text"):
+    for bad in (["/absolute.md"], ["../up.md"], [".brainfold.toml"], "text"):
         assert code(brain.describe_folder, ALICE, "/projects/costs", "d", bad) == "invalid_metadata"
     brain.describe_folder(ALICE, "/projects/costs", 'Costs "2026"', ["process.md"])
     managed = brain.list(CARLA, "/projects", manage=True)
@@ -207,8 +207,10 @@ def test_personal_folders_belong_to_their_owner_only(brain: Brain) -> None:
     home = "/people/alice-1a2b"
     assert brain.list(ALICE, home)["can_write"]
     brain.write(ALICE, f"{home}/notes.md", "mine")
-    # A stray `.oif.toml` inside cannot widen it, and nobody else can create one.
-    (brain.root / "people" / "alice-1a2b" / ".oif.toml").write_text('read = ["*"]\nwrite = ["*"]')
+    # A stray `.brainfold.toml` inside cannot widen it, and nobody else can create one.
+    (brain.root / "people" / "alice-1a2b" / ".brainfold.toml").write_text(
+        'read = ["*"]\nwrite = ["*"]'
+    )
     assert code(brain.read, BOB, f"{home}/notes.md") == "unavailable"
     assert code(brain.write, BOB, f"{home}/x.md", "x") == "unavailable"
     assert code(brain.create_folder, ALICE, "/people/someone", "no") == "unavailable"
@@ -252,7 +254,7 @@ def test_git_records_each_change_and_nothing_else(brain: Brain) -> None:
     (brain.root / "projects" / "costs" / "a.md").write_text("edited by hand")
     hand = brain.read(ALICE, "/projects/costs/a.md")["version"]
     brain.write(ALICE, "/projects/costs/a.md", "b", hand)
-    assert "oif: baseline projects/costs/a.md" in git_log(brain, "--format=%s")
+    assert "brainfold: baseline projects/costs/a.md" in git_log(brain, "--format=%s")
     # Whatever a person staged is not swept into an agent's commit.
     (brain.root / "staged-by-hand.md").write_text("mine")
     subprocess.run(["git", "-C", str(brain.root), "add", "staged-by-hand.md"], check=True)
@@ -271,9 +273,9 @@ def test_startup_refuses_a_locked_repository_and_works_without_git(tmp_path: Pat
     plain = Brain(tmp_path / "brain", lambda: {"costs": [ALICE]}, ALIASES.get, git=False)
     assert plain.write(ALICE, "/projects/costs/a.md", "a")["versioned"] is False
     assert plain.unversioned == 1
-    (tmp_path / "brain" / "projects" / "costs" / ".x.md.oif-tmp").write_text("crash leftover")
+    (tmp_path / "brain" / "projects" / "costs" / ".x.md.brainfold-tmp").write_text("crash leftover")
     Brain(tmp_path / "brain", lambda: {}, ALIASES.get)  # initializes git, cleans leftovers
-    assert not (tmp_path / "brain" / "projects" / "costs" / ".x.md.oif-tmp").exists()
+    assert not (tmp_path / "brain" / "projects" / "costs" / ".x.md.brainfold-tmp").exists()
     (tmp_path / "brain" / ".git" / "index.lock").write_text("")
     assert code(Brain, tmp_path / "brain", lambda: {}) == "invalid_configuration"
 
@@ -434,7 +436,7 @@ def test_folders_move_whole_or_not_at_all_and_only_empty_ones_are_deleted(brain:
 
 def test_files_of_any_type_are_stored_with_the_same_rules(brain: Brain, tmp_path: Path) -> None:
     def upload(who: str, path: str, data: bytes, version: str | None = None) -> dict:
-        source = brain.root / ".upload-test.oif-tmp"
+        source = brain.root / ".upload-test.brainfold-tmp"
         source.write_bytes(data)
         return brain.put_file(who, path, source, version)
 
@@ -442,7 +444,9 @@ def test_files_of_any_type_are_stored_with_the_same_rules(brain: Brain, tmp_path
     stored = upload(ALICE, "/projects/costs/salaries.xlsx", sheet)
     assert brain.download(REVIEWER, "/projects/costs/salaries.xlsx") == (sheet, stored["version"])
     seen = brain.read(ALICE, "/projects/costs/salaries.xlsx")
-    assert seen["kind"] == "binary" and "oif get /projects/costs/salaries.xlsx" in seen["fetch"]
+    assert (
+        seen["kind"] == "binary" and "brainfold get /projects/costs/salaries.xlsx" in seen["fetch"]
+    )
     assert code(brain.download, BOB, "/projects/costs/salaries.xlsx") == "unavailable"
     assert code(upload, ALICE, "/projects/costs/salaries.xlsx", b"new") == "already_exists"
     assert code(upload, ALICE, "/projects/costs/salaries.xlsx", b"new", "0" * 64) == "conflict"

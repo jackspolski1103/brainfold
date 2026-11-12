@@ -1,19 +1,19 @@
-# OIF: a shared brain for agents
+# Brainfold: a shared brain for agents
 
-A personal, independent project with open source intent. **OIF is a working name.** There is no remote repository or license yet.
+A personal, independent project with open source intent. There is no remote repository or license yet.
 
-OIF is an MCP server that turns a folder into a team's shared brain: files with permissions that any harness (Claude Code, Codex or another) reads and writes. Full scope, including what it deliberately does not do, is in [docs/scope.md](docs/scope.md).
+Brainfold is an MCP server that turns a folder into a team's shared brain: files with permissions that any harness (Claude Code, Codex or another) reads and writes. Full scope, including what it deliberately does not do, is in [docs/scope.md](docs/scope.md).
 
 ## Status
 
-Development implementation. What works today: the MCP server over a folder on disk, read and write permissions per folder, file operations with conflict detection, files of any type through `oif put` and `oif get`, history and restore, folder guidance written by agents, personal folders, text search, skills delivered to each agent through `use_skill`, a learnings log, email and password accounts, personal tokens, groups, an activity log, and a web panel. A first version of the web panel is included. By default the server listens on loopback only; a compose file runs it behind a TLS proxy for use across machines. Example data is synthetic. The plan in progress is [docs/designs/core-permissioned-memory.md](docs/designs/core-permissioned-memory.md).
+Development implementation. What works today: the MCP server over a folder on disk, read and write permissions per folder, file operations with conflict detection, files of any type through `brainfold put` and `brainfold get`, history and restore, folder guidance written by agents, personal folders, text search, skills delivered to each agent through `use_skill`, a learnings log, email and password accounts, personal tokens, groups, an activity log, and a web panel. A first version of the web panel is included. By default the server listens on loopback only; a compose file runs it behind a TLS proxy for use across machines. Example data is synthetic. The plan in progress is [docs/designs/core-permissioned-memory.md](docs/designs/core-permissioned-memory.md).
 
 ## Try it
 
 ```bash
 uv sync
-cp -R examples/brain /tmp/oif-brain            # the server turns the brain folder into a git repository
-uv run oif serve --root /tmp/oif-brain        # accounts and activity go to ./oif.db
+cp -R examples/brain /tmp/brainfold-brain            # the server turns the brain folder into a git repository
+uv run brainfold serve --root /tmp/brainfold-brain        # accounts and activity go to ./brainfold.db
 
 # In another terminal: create the administrator, a group and a harness token.
 J='Content-Type: application/json'; U=http://127.0.0.1:8020
@@ -21,38 +21,38 @@ curl -c cookies.txt -H "$J" -d '{"email":"you@example.com","password":"a-long-pa
 curl -b cookies.txt -X PUT -H "$J" -d '{"members":["you@example.com"]}' $U/api/groups/costs
 curl -b cookies.txt -H "$J" -d '{"name":"claude code"}' $U/api/tokens   # shows the token once
 
-claude mcp add --transport http oif $U/mcp --header "Authorization: Bearer <token>"
+claude mcp add --transport http brainfold $U/mcp --header "Authorization: Bearer <token>"
 ```
 
 MCP tools: `list`, `read`, `write`, `edit`, `append`, `move`, `delete`, `create_folder`, `describe_folder`, `search`, `history`, `restore`, `list_learnings`, `use_skill`.
 
-Files of any type (a manual, a spreadsheet) go through the command line, which reads `OIF_URL` and `OIF_TOKEN` from the environment or from `~/.config/oif/config.toml` (mode 0600):
+Files of any type (a manual, a spreadsheet) go through the command line, which reads `BRAINFOLD_URL` and `BRAINFOLD_TOKEN` from the environment or from `~/.config/brainfold/config.toml` (mode 0600):
 
 ```bash
-oif put salaries.xlsx /hr/salaries.xlsx
-oif get /hr/salaries.xlsx ./salaries.xlsx
+brainfold put salaries.xlsx /hr/salaries.xlsx
+brainfold get /hr/salaries.xlsx ./salaries.xlsx
 ```
 
 ## Web panel
 
 ```bash
-cd web && npm install && npm run build     # writes the panel into src/oif/panel
+cd web && npm install && npm run build     # writes the panel into src/brainfold/panel
 ```
 
-Then `oif serve` shows it at the server's address: sign in, browse the brain, edit who reads and writes each folder, invite people, manage groups and tokens, and see activity. While developing, `npm run dev` serves it with live reload and forwards `/api` to a server on port 8020. The container image builds the panel by itself.
+Then `brainfold serve` shows it at the server's address: sign in, browse the brain, edit who reads and writes each folder, invite people, manage groups and tokens, and see activity. While developing, `npm run dev` serves it with live reload and forwards `/api` to a server on port 8020. The container image builds the panel by itself.
 
 ## Run it for a team
 
 ```bash
-OIF_DOMAIN=brain.example.com docker compose up -d
-docker compose logs oif      # prints the setup code needed to create the first account
+BRAINFOLD_DOMAIN=brain.example.com docker compose up -d
+docker compose logs brainfold      # prints the setup code needed to create the first account
 ```
 
 The server runs behind a proxy that terminates TLS and is never published directly. Creating the first account needs the printed setup code, sent as `"code"` in the `/api/setup` body. This was checked locally with the proxy's own certificate; it has not been run on a real domain yet.
 
 ## Brain format
 
-Each folder may carry a `.oif.toml`:
+Each folder may carry a `.brainfold.toml`:
 
 ```toml
 description = "Process and learnings of the costs team."

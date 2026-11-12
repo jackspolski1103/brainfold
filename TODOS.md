@@ -18,7 +18,7 @@
 
 **What:** Issue a short-lived, single-use link for one path so a chat client without a terminal can open a binary file.
 
-**Why:** Binary files move through `oif put` and `oif get`, which need a shell. A client without one knows the file exists but cannot open it.
+**Why:** Binary files move through `brainfold put` and `brainfold get`, which need a shell. A client without one knows the file exists but cannot open it.
 
 **Context:** Deferred in the CEO review of 2026-11-12 (D14). First targets (Claude Code, Codex) have a shell. A link grants access without a token and passes through the model's context, which the design avoids for tokens, so it needs a tight lifetime and its own tests.
 

@@ -2,7 +2,7 @@
 
 Checked on 2026-11-12 from project pages and directory listings, not from source code. The detailed research written on 2026-11-11 is in git history.
 
-| Project | What it is | How OIF differs |
+| Project | What it is | How Brainfold differs |
 |---|---|---|
 | Krimto (Apache-2.0) | Markdown memory in git, user to team to organization hierarchy, MCP server, web dashboard | Fixed levels instead of permissions on any folder; no folder guidance |
 | Fastio (commercial, hosted) | Cloud storage for agents with a remote MCP server and four permission levels | Closed and hosted |

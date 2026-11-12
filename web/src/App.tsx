@@ -48,7 +48,7 @@ function Entrance({ state, invite, onDone }: { state: State; invite: string | nu
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-6 px-4">
       <div>
-        <p className="text-sm font-semibold tracking-tight text-zinc-500">OIF</p>
+        <p className="text-sm font-semibold tracking-tight text-zinc-500">Brainfold</p>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">{titles[0]}</h1>
         <p className="mt-1 text-sm text-zinc-500">{titles[1]}</p>
       </div>
@@ -69,7 +69,7 @@ function Entrance({ state, invite, onDone }: { state: State; invite: string | nu
           />
         </Field>
         {mode === "setup" && state.code_required && (
-          <Field label="Setup code" hint="Printed by the server when it started (docker compose logs oif).">
+          <Field label="Setup code" hint="Printed by the server when it started (docker compose logs brainfold).">
             <Input required value={code} onChange={(e) => setCode(e.target.value)} />
           </Field>
         )}
@@ -113,7 +113,7 @@ export function App() {
   return (
     <div className="mx-auto flex min-h-screen max-w-6xl flex-col md:flex-row">
       <aside className="flex shrink-0 flex-col gap-1 border-zinc-200 p-4 md:w-56 md:border-r dark:border-zinc-800">
-        <p className="mb-3 px-2 text-sm font-semibold tracking-tight">OIF</p>
+        <p className="mb-3 px-2 text-sm font-semibold tracking-tight">Brainfold</p>
         <nav className="flex gap-1 md:flex-col" aria-label="Sections">
           {pages.map(({ href, label, icon: Icon, active }) => (
             <a
