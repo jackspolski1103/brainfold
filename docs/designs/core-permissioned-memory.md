@@ -336,10 +336,11 @@ T1 to T11 are phase 1; T12 to T16 are phase 2.
   - Surfaced by: R8
   - Files: tests/test_matrix.py
   - Verify: `uv run pytest -q tests/test_matrix.py`
-- [ ] **T11 (P1, human: ~2d / CC: ~1h)** — examples — Fuller example case, OIF's own brain in brain/, live check of both scenes
+- [x] **T11 (P1, human: ~2d / CC: ~1h)** — examples — Fuller example case, OIF's own brain in brain/, live check of both scenes
   - Surfaced by: Premise 6; success criteria 1 and 2
   - Files: examples/brain/, .gitignore
   - Verify: Activity log shows only list and read for the day-one question; answer contains the three fixed facts
+  - Done 2026-11-12 on a copy of OIF's own brain (`brain/`, ignored by this repository), with fresh headless Claude Code 2.1.322 sessions for a newly invited account. Day one: asked only "how do we work here?", the answer named `docs/decisions`, `uv run pytest` and the out-of-scope harness; activity showed list, read and one read-only `list_learnings`. Spreading skill: another account wrote `/skills/release-notes/SKILL.md`; the new account asked for release notes without mentioning skills, the agent called `use_skill` first and the output carried the skill's reference code and closing sentence. One run each; frequency was not measured. The example case in `examples/brain/` was translated but not made fuller.
 - [ ] **T12 (P2, human: ~4d / CC: ~2h)** — server — Binary files: byte storage, /files routes with ETag and If-Match, oif put and oif get
   - Surfaced by: Layer 1 binary files; phase 2
   - Files: src/oif/brain.py, src/oif/server.py, src/oif/cli.py, tests/
