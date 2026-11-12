@@ -64,3 +64,11 @@ def test_common_path_forms_are_accepted_and_answers_use_the_canonical_path(brain
     assert made["path"] == "/projects/costs/reports"
     for unsafe in ("/projects//costs", "projects/costs/../../.brainfold.toml", "/projects/costs//"):
         assert code(brain.list, ALICE, unsafe) == "unavailable", unsafe
+
+
+# Regression: ISSUE-004 — storing a file again with identical content was reported as
+# "not in history" and raised the unversioned counter.
+def test_storing_identical_content_again_is_not_reported_as_unversioned(brain: Brain) -> None:
+    first = brain.write(ALICE, "/projects/costs/same.md", "same")
+    again = brain.write(ALICE, "/projects/costs/same.md", "same", first["version"])
+    assert again["versioned"] and brain.unversioned == 0

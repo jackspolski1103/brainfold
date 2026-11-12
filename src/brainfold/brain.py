@@ -271,6 +271,8 @@ class Brain:
             return False
         paths = [str(target.relative_to(self.root)) for target in targets]
         self._git("add", "-A", "--", *paths)
+        if self._git("diff", "--cached", "--quiet", "--", *paths):
+            return True  # identical content is already in history
         done = self._git("commit", "-q", "-m", f"{who}: {message}", "--", *paths, author=who)
         self.unversioned += not done
         return done
