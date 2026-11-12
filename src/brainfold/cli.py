@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import ipaddress
 import json
 import os
@@ -117,6 +118,18 @@ def main(argv: list[str] | None = None) -> int:
         "beyond loopback (or set BRAINFOLD_PUBLIC_URL)",
     )
     serve.add_argument("--port", type=int, default=int(env("PORT", "8020")))
+    serve.add_argument(
+        "--mirror",
+        default=env("BRAINFOLD_MIRROR"),
+        help="git remote that receives every change as an off-site copy (or set "
+        "BRAINFOLD_MIRROR; its ssh key comes from BRAINFOLD_MIRROR_KEY)",
+    )
+    reset = commands.add_parser(
+        "reset-password", help="Print a one-time link to choose a new password for an account"
+    )
+    reset.add_argument("email")
+    reset.add_argument("--db", type=Path, default=Path(env("BRAINFOLD_DB", "brainfold.db")))
+    reset.add_argument("--public-url", default=env("BRAINFOLD_PUBLIC_URL", "http://127.0.0.1:8020"))
     put = commands.add_parser("put", help="Upload a file of any type to the brain")
     put.add_argument("file", type=Path)
     put.add_argument("path", help="Destination in the brain, for example /hr/salaries.xlsx")
@@ -131,6 +144,16 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "get":
             _get(args.path, args.destination)
+            return 0
+        if args.command == "reset-password":
+            from brainfold.accounts import Accounts
+
+            if not args.db.is_file():
+                raise BrainfoldError(
+                    "invalid_configuration", "The accounts database was not found."
+                )
+            token = Accounts(args.db).reset(args.email.strip().lower())
+            print(f"One-time link for {args.email}: {args.public_url.rstrip('/')}/#/accept/{token}")
             return 0
         import uvicorn
 
@@ -148,7 +171,27 @@ def main(argv: list[str] | None = None) -> int:
         root = Path(args.root)
         root.mkdir(parents=True, exist_ok=True)
         Path(args.db).parent.mkdir(parents=True, exist_ok=True)
-        app = create_app(root, args.db, host=args.host, port=args.port, public_url=public)
+        ssh = None
+        if args.mirror and (key := os.environ.get("BRAINFOLD_MIRROR_KEY")):
+            # The key lives next to the accounts database, never inside the brain.
+            text = key if key.startswith("-----BEGIN") else base64.b64decode(key).decode()
+            key_file = Path(args.db).resolve().parent / "mirror_key"
+            key_file.write_text(text.strip() + "\n")
+            key_file.chmod(0o600)
+            hosts = key_file.with_name("mirror_known_hosts")
+            ssh = (
+                f"ssh -i {key_file} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new "
+                f"-o UserKnownHostsFile={hosts}"
+            )
+        app = create_app(
+            root,
+            args.db,
+            host=args.host,
+            port=args.port,
+            public_url=public,
+            mirror=args.mirror,
+            ssh=ssh,
+        )
     except BrainfoldError as exc:
         print(f"Error ({exc.code}): {exc.message}", file=sys.stderr)
         return 1

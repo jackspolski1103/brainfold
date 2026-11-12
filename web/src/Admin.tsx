@@ -11,6 +11,7 @@ export function Members({ self }: { self: string }) {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("member");
   const [invite, setInvite] = useState("");
+  const [inviteFor, setInviteFor] = useState("");
   const [group, setGroup] = useState("");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
@@ -38,9 +39,16 @@ export function Members({ self }: { self: string }) {
     void attempt(async () => {
       const result = await api<{ invite: string }>("POST", "/api/users", { email, role });
       setInvite(`${location.origin}/#/accept/${result.invite}`);
+      setInviteFor(`Send this link to ${email}. It works once and is not shown again.`);
       setEmail("");
     });
   };
+  const resetPassword = (member: string) =>
+    attempt(async () => {
+      const result = await api<{ invite: string }>("POST", `/api/users/${encodeURIComponent(member)}/reset`, {});
+      setInvite(`${location.origin}/#/accept/${result.invite}`);
+      setInviteFor(`Send this link to ${member} to choose a new password. It works once; their current password works until they use it.`);
+    });
   const saveGroup = (groupName: string, list: string) =>
     attempt(async () => {
       await api("PUT", `/api/groups/${encodeURIComponent(groupName)}`, { members: parse(list) });
@@ -65,7 +73,7 @@ export function Members({ self }: { self: string }) {
         </form>
         {invite && (
           <div className="mt-4 space-y-2">
-            <Notice tone="blue">Send this link to the person. It works once and is not shown again.</Notice>
+            <Notice tone="blue">{inviteFor}</Notice>
             <Copyable text={invite} />
           </div>
         )}
@@ -78,6 +86,9 @@ export function Members({ self }: { self: string }) {
               <Td>{member.role}</Td>
               <Td><span className="flex flex-wrap gap-1">{member.groups.map((item) => <Badge key={item}>@{item}</Badge>)}</span></Td>
               <Td>
+                {!member.pending && (
+                  <Button variant="ghost" onClick={() => void resetPassword(member.email)}>Reset password</Button>
+                )}
                 {member.email !== self && (
                   <Button variant="danger" onClick={() => confirm(`Remove ${member.email}? Their tokens stop working at once.`) && void attempt(() => api("DELETE", `/api/users/${encodeURIComponent(member.email)}`))}>
                     Remove
@@ -109,6 +120,33 @@ export function Members({ self }: { self: string }) {
   );
 }
 
+function Password() {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+  async function change(event: FormEvent) {
+    event.preventDefault();
+    try {
+      await api("POST", "/api/password", { current, new: next });
+      setCurrent("");
+      setNext("");
+      setResult({ ok: true, text: "Password changed. Your other sessions were signed out." });
+    } catch (failure) {
+      setResult({ ok: false, text: message(failure) });
+    }
+  }
+  return (
+    <Card title="Password">
+      <form onSubmit={change} className="flex flex-wrap items-end gap-3">
+        <div className="min-w-48 flex-1"><Field label="Current password"><Input type="password" autoComplete="current-password" required value={current} onChange={(e) => setCurrent(e.target.value)} /></Field></div>
+        <div className="min-w-48 flex-1"><Field label="New password"><Input type="password" autoComplete="new-password" required minLength={10} value={next} onChange={(e) => setNext(e.target.value)} /></Field></div>
+        <Button type="submit" variant="outline">Change password</Button>
+      </form>
+      {result && <div className="mt-3"><Notice tone={result.ok ? "blue" : "red"}>{result.text}</Notice></div>}
+    </Card>
+  );
+}
+
 export function Tokens() {
   const [tokens, setTokens] = useState<Token[]>([]);
   const [label, setLabel] = useState("");
@@ -130,7 +168,7 @@ export function Tokens() {
 
   return (
     <>
-      <h1 className="text-xl font-semibold tracking-tight">Tokens</h1>
+      <h1 className="text-xl font-semibold tracking-tight">Account</h1>
       <p className="text-sm text-zinc-500">A token connects your harness to the brain with your permissions.</p>
       {error && <Notice>{error}</Notice>}
       <Card title="New token">
@@ -147,6 +185,7 @@ export function Tokens() {
           </div>
         )}
       </Card>
+      <Password />
       <Card title="Your tokens">
         <Table head={["Name", "Created", "Last used", ""]} empty={tokens.length === 0}>
           {tokens.map((token) => (

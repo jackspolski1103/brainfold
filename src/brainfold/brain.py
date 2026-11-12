@@ -20,6 +20,7 @@ import re
 import shlex
 import subprocess
 import threading
+import time
 import tomllib
 import unicodedata
 from collections.abc import Callable, Mapping, Sequence
@@ -128,7 +129,13 @@ class Brain:
         git: bool = True,
         journal: Any = None,
         max_file_bytes: int = 25 * 1024 * 1024,
+        mirror: str | None = None,
+        ssh: str | None = None,
     ) -> None:
+        self.mirror = mirror  # git remote that receives every change, as an off-site copy
+        self.ssh = ssh  # ssh command git uses to reach it
+        self.mirror_state = "off"
+        self._changed = threading.Event()
         self.groups = groups
         self.alias = alias
         self.journal = journal  # revision records: add_revision, revisions, created
@@ -141,6 +148,10 @@ class Brain:
         self.unversioned = 0  # writes since start that git did not record
         self._clean()
         self.git = git and self._start_git()
+        if self.mirror and self.git:
+            self.mirror_state = "pending"
+            self._changed.set()
+            threading.Thread(target=self._mirror_changes, daemon=True).start()
 
     # --- paths and permissions ------------------------------------------------------
 
@@ -225,13 +236,53 @@ class Brain:
 
     # --- git ------------------------------------------------------------------------
 
-    def _git_output(self, *args: str, author: str = "brainfold") -> bytes | None:
+    def _mirror_changes(self) -> None:
+        """Push after every change, outside the brain lock. Never forces: if the mirror
+        holds history this brain lacks, the state stays `failing` for a person to look at."""
+        while True:
+            self._changed.wait()
+            self._changed.clear()
+            pushed = self._git(
+                "push", "--quiet", self.mirror or "", "HEAD:refs/heads/main", wait=120
+            )
+            self.mirror_state = "ok" if pushed else "failing"
+            if not pushed:
+                time.sleep(30)
+                self._changed.set()
+
+    @staticmethod
+    def restore_from_mirror(root: Path, mirror: str, ssh: str | None) -> bool:
+        """Fill an empty brain folder from its mirror, for a new or replaced volume."""
+        if any(root.iterdir()):
+            return False
+        env = {
+            **os.environ,
+            "GIT_TERMINAL_PROMPT": "0",
+            **({"GIT_SSH_COMMAND": ssh} if ssh else {}),
+        }
+        try:
+            done = subprocess.run(
+                ["git", "clone", "--quiet", "--branch", "main", mirror, str(root)],
+                env=env,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                timeout=300,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        return done.returncode == 0 and any(entry.name != ".git" for entry in root.iterdir())
+
+    def _git_output(
+        self, *args: str, author: str = "brainfold", wait: int = GIT_TIMEOUT
+    ) -> bytes | None:
         """Run git with no user configuration, hooks, signing or prompt, and a time limit."""
         env = {
             **os.environ,
             "GIT_CONFIG_GLOBAL": os.devnull,
             "GIT_CONFIG_NOSYSTEM": "1",
             "GIT_TERMINAL_PROMPT": "0",
+            **({"GIT_SSH_COMMAND": self.ssh} if self.ssh else {}),
         }
         command = ["git", "-C", str(self.root), "-c", f"user.name={author}"]
         command += ["-c", f"user.email={author}", "-c", "commit.gpgsign=false"]
@@ -242,15 +293,15 @@ class Brain:
                 env=env,
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
-                timeout=GIT_TIMEOUT,
+                timeout=wait,
                 check=False,
             )
         except (OSError, subprocess.TimeoutExpired):
             return None
         return done.stdout if done.returncode == 0 else None
 
-    def _git(self, *args: str, author: str = "brainfold") -> bool:
-        return self._git_output(*args, author=author) is not None
+    def _git(self, *args: str, author: str = "brainfold", wait: int = GIT_TIMEOUT) -> bool:
+        return self._git_output(*args, author=author, wait=wait) is not None
 
     def _start_git(self) -> bool:
         if (self.root / ".git" / "index.lock").exists():
@@ -276,6 +327,7 @@ class Brain:
             return True  # identical content is already in history
         done = self._git("commit", "-q", "-m", f"{who}: {message}", "--", *paths, author=who)
         self.unversioned += not done
+        self._changed.set()
         return done
 
     def _snapshot(self, target: Path) -> str:

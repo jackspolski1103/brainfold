@@ -70,6 +70,8 @@ def create_app(
     port: int = 8020,
     git: bool = True,
     public_url: str | None = None,
+    mirror: str | None = None,
+    ssh: str | None = None,
 ) -> Any:
     """`public_url` means the server sits behind a TLS proxy at that address: cookies are
     always Secure, the first account needs the printed setup code, and the client address
@@ -79,7 +81,28 @@ def create_app(
             "invalid_configuration", "The accounts database must be outside the brain folder."
         )
     accounts = Accounts(database)
-    brain = Brain(root, accounts.groups, accounts.alias, git=git, journal=accounts)
+    if mirror and git:
+        Brain.restore_from_mirror(root, mirror, ssh)  # only when the folder is empty
+    # The brain folder and the accounts database carry the same identity. A server that
+    # starts with accounts but another (or an empty) folder stops here instead of showing
+    # an empty brain: usually the volume is not mounted.
+    marker = root / ".brainfold-id"
+    known = accounts.setting("brain_id")
+    found = marker.read_text("utf-8").strip() if marker.is_file() else None
+    if known and found != known:
+        raise BrainfoldError(
+            "invalid_configuration",
+            "The brain folder does not belong to this accounts database. Check that the "
+            "volume is mounted and that the root points to the right folder.",
+        )
+    if not known:
+        if not found:
+            found = secrets.token_hex(16)
+            marker.write_text(f"{found}\n", "utf-8")
+        accounts.set_setting("brain_id", found)
+    brain = Brain(
+        root, accounts.groups, accounts.alias, git=git, journal=accounts, mirror=mirror, ssh=ssh
+    )
 
     def act(actor: str, action: str, path: str, call: Callable[[], Any]) -> Any:
         """Run one brain operation and record it, with whether git kept the change."""
@@ -356,6 +379,7 @@ def create_app(
             "git": bool(brain.git),
             "database": accounts.healthy(),
             "unversioned_writes": brain.unversioned,
+            "mirror": brain.mirror_state,
         }
         return JSONResponse(report, status_code=200 if report["database"] else 503)
 
@@ -402,6 +426,16 @@ def create_app(
         response = JSONResponse({})
         response.delete_cookie(COOKIE)
         return response
+
+    def password(request: Request, user: User, body: dict) -> dict[str, Any]:
+        accounts.change_password(user.email, body["current"], body["new"], _session(request))
+        accounts.log(user.email, "change_password", "", True)
+        return {}
+
+    def reset_password(request: Request, user: User, _body: dict) -> dict[str, Any]:
+        invite = accounts.reset(request.path_params["email"])
+        accounts.log(user.email, "reset_password", request.path_params["email"], True)
+        return {"invite": invite}  # same one-time link as an invitation
 
     def users(request: Request, user: User, body: dict) -> dict[str, Any]:
         if request.method == "POST":
@@ -526,6 +560,10 @@ def create_app(
             Route("/api/login", endpoint(login, public=True), methods=["POST"]),
             Route("/api/accept", endpoint(accept, public=True), methods=["POST"]),
             Route("/api/logout", endpoint(logout), methods=["POST"]),
+            Route("/api/password", endpoint(password), methods=["POST"]),
+            Route(
+                "/api/users/{email}/reset", endpoint(reset_password, admin=True), methods=["POST"]
+            ),
             Route("/api/users", endpoint(users, admin=True), methods=["GET", "POST"]),
             Route("/api/users/{email}", endpoint(remove_user, admin=True), methods=["DELETE"]),
             Route("/api/groups", endpoint(groups, admin=True)),

@@ -101,7 +101,7 @@ export function App() {
   const pages = [
     { href: "/brain/", label: "Brain", icon: FolderTree, show: true, active: route.startsWith("/brain") || route.startsWith("/file") },
     { href: "/members", label: "Members", icon: Users, show: admin, active: route === "/members" },
-    { href: "/tokens", label: "Tokens", icon: KeyRound, show: true, active: route === "/tokens" },
+    { href: "/tokens", label: "Account", icon: KeyRound, show: true, active: route === "/tokens" },
     { href: "/activity", label: "Activity", icon: ActivityIcon, show: admin, active: route === "/activity" },
   ].filter((page) => page.show);
 

@@ -56,6 +56,7 @@ CREATE TABLE revisions(
   at REAL NOT NULL, kind TEXT NOT NULL, readers TEXT NOT NULL, version TEXT);
 CREATE INDEX revisions_path ON revisions(path);
 """,
+    "CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);",
 )
 
 
@@ -168,6 +169,8 @@ class Accounts:
             self._run(
                 "UPDATE users SET password = ?, invite = NULL WHERE email = ?", hashed, rows[0][0]
             )
+            # A reset link also signs the account out everywhere.
+            self._run("DELETE FROM tokens WHERE email = ? AND kind = 'session'", rows[0][0])
         return rows[0][0]
 
     def users(self) -> list[dict[str, Any]]:
@@ -227,16 +230,45 @@ class Accounts:
         count, since = self._failures.get(key, (0, 0.0))
         if count >= MAX_FAILURES and time.time() - since < LOCK_SECONDS:
             raise BrainfoldError("too_many_attempts", "Too many attempts. Try again in a minute.")
-        rows = self._run("SELECT password FROM users WHERE email = ?", email)
-        salt, _, expected = (rows[0][0] if rows and rows[0][0] else "00:").partition(":")
-        # Hash even for unknown accounts so timing does not reveal which emails exist.
-        supplied = _hash(str(password), bytes.fromhex(salt))
-        if not expected or not hmac.compare_digest(supplied, expected):
+        if not self._matches(email, password):
             # ponytail: per-process counter; move to the database when running replicas.
             self._failures[key] = (count % MAX_FAILURES + 1, time.time())
             raise failed
         self._failures.pop(key, None)
         return self.issue(email, "session", "panel", SESSION_SECONDS)[1]
+
+    def _matches(self, email: str, password: Any) -> bool:
+        rows = self._run("SELECT password FROM users WHERE email = ?", email)
+        salt, _, expected = (rows[0][0] if rows and rows[0][0] else "00:").partition(":")
+        # Hash even for unknown accounts so timing does not reveal which emails exist.
+        supplied = _hash(str(password), bytes.fromhex(salt))
+        return bool(expected) and hmac.compare_digest(supplied, expected)
+
+    def change_password(self, email: str, current: Any, new: Any, keep: str | None) -> None:
+        """Set a new password and end every other panel session of that account."""
+        if not self._matches(email, current):
+            raise BrainfoldError("invalid_credentials", "The current password is wrong.")
+        self._run("UPDATE users SET password = ? WHERE email = ?", _password(new), email)
+        self._run(
+            "DELETE FROM tokens WHERE email = ? AND kind = 'session' AND digest != ?",
+            *(email, _digest(keep or "")),
+        )
+
+    def reset(self, email: str) -> str:
+        """A one-time link token to choose a new password; the old one works until then."""
+        token = secrets.token_urlsafe(32)
+        with self._lock:
+            if not self._run("SELECT 1 FROM users WHERE email = ?", email):
+                raise BrainfoldError("unavailable", "There is no account with that email.")
+            self._run("UPDATE users SET invite = ? WHERE email = ?", _digest(token), email)
+        return token
+
+    def setting(self, key: str) -> str | None:
+        rows = self._run("SELECT value FROM settings WHERE key = ?", key)
+        return rows[0][0] if rows else None
+
+    def set_setting(self, key: str, value: str) -> None:
+        self._run("INSERT OR REPLACE INTO settings VALUES (?, ?)", key, value)
 
     def issue(self, email: str, kind: str, name: Any, ttl: float | None = None) -> tuple[int, str]:
         if not isinstance(name, str) or not 1 <= len(name.strip()) <= 80:

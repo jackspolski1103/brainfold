@@ -247,6 +247,7 @@ def test_health_and_configuration_guards(tmp_path: Path) -> None:
         "git": False,
         "database": True,
         "unversioned_writes": 0,
+        "mirror": "off",
     }
 
 
