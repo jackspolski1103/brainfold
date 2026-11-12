@@ -1,0 +1,21 @@
+=== RUN   TestAtlasComparison
+    atlas_comparison_test.go:85: T1/T2 private source inaccessible to Bruno/Carla/Diego; private candidate absent from Atlas reader search
+    atlas_comparison_test.go:99: T4 exact revision approval invalidated after edit; stale approval rejected
+    atlas_comparison_test.go:142: T5/T6 approved sanitized snapshot found; Bruno cannot read source; Carla excluded; Diego/Ana cannot finalize destination
+    atlas_comparison_test.go:153: T7 expansion Atlas -> organization requires separate destination authority
+    atlas_comparison_test.go:164: T8 next read denied after membership revocation; already delivered in-memory copy remains
+    atlas_comparison_test.go:176: T9 correcting independent private source does not mutate published snapshot (no source dependency link supplied by this API)
+    atlas_comparison_test.go:187: OBSERVED: edited published lesson is searchable as unverified BEFORE reapproval; separately recorded derived procedure remains approved at 5 retries
+    atlas_comparison_test.go:192: OBSERVED: a new unapproved record written directly into Atlas is searchable by Atlas readers; keep proposals private until promotion
+    atlas_comparison_test.go:210: T10 archived lesson excluded from default search; authorized history retains two revisions; old delivered copy remains (not an export/import test)
+--- PASS: TestAtlasComparison (0.66s)
+=== RUN   TestRevocationIsImmediate
+--- PASS: TestRevocationIsImmediate (0.60s)
+=== RUN   TestPromotionConsentAndVisibility
+--- PASS: TestPromotionConsentAndVisibility (0.53s)
+=== RUN   TestPromotionStaleRejectedCancelled
+--- PASS: TestPromotionStaleRejectedCancelled (0.60s)
+=== RUN   TestApprovalIsRevisionBound
+--- PASS: TestApprovalIsRevisionBound (0.47s)
+PASS
+ok  	github.com/team-memory/team-memory/integration/security	3.185s

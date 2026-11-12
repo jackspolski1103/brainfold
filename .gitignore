@@ -1,0 +1,45 @@
+# Credenciales y configuración local
+.env
+.env.*
+!.env.example
+!.env.*.example
+.secrets/
+secrets/
+credentials/
+*.pem
+*.key
+
+# Datos locales y bases de desarrollo
+.data/
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+backups/
+
+# Dependencias y artefactos generados
+node_modules/
+.pnpm-store/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+dist/
+build/
+.next/
+coverage/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.tsbuildinfo
+
+# Archivos locales y temporales
+.DS_Store
+*.log
+# Evidencia revisada del experimento sintético; no son logs de usuarios.
+!docs/research/comparison-atlas/evidence/cq/server-run.log
+!docs/research/comparison-atlas/evidence/cq/upstream-tests.log
+work/
+tmp/

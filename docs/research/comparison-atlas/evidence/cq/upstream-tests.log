@@ -1,0 +1,27 @@
+........................................................................ [ 92%]
+......                                                                   [100%]
+=============================== warnings summary ===============================
+server/backend/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /Users/jackspolski/Documents/Codex/2026-11-11/referenced-chatgpt-conversation-this-is-an/work/comparison/cq/server/backend/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/test_review.py: 24 warnings
+tests/test_auth.py: 16 warnings
+  /Users/jackspolski/Documents/Codex/2026-11-11/referenced-chatgpt-conversation-this-is-an/work/comparison/cq/server/backend/.venv/lib/python3.12/site-packages/jwt/api_jwt.py:149: InsecureKeyLengthWarning: The HMAC key is 11 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+    return self._jws.encode(
+
+tests/test_review.py: 24 warnings
+tests/test_auth.py: 15 warnings
+  /Users/jackspolski/Documents/Codex/2026-11-11/referenced-chatgpt-conversation-this-is-an/work/comparison/cq/server/backend/.venv/lib/python3.12/site-packages/jwt/api_jwt.py:370: InsecureKeyLengthWarning: The HMAC key is 11 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+    decoded = self.decode_complete(
+
+tests/test_auth.py::TestJWT::test_wrong_secret_rejected
+  /Users/jackspolski/Documents/Codex/2026-11-11/referenced-chatgpt-conversation-this-is-an/work/comparison/cq/server/backend/.venv/lib/python3.12/site-packages/jwt/api_jwt.py:149: InsecureKeyLengthWarning: The HMAC key is 8 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+    return self._jws.encode(
+
+tests/test_auth.py::TestJWT::test_wrong_secret_rejected
+  /Users/jackspolski/Documents/Codex/2026-11-11/referenced-chatgpt-conversation-this-is-an/work/comparison/cq/server/backend/.venv/lib/python3.12/site-packages/jwt/api_jwt.py:370: InsecureKeyLengthWarning: The HMAC key is 8 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+    decoded = self.decode_complete(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+78 passed, 82 warnings in 22.35s

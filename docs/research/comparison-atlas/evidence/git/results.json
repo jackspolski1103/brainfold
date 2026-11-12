@@ -1,0 +1,391 @@
+{
+  "case_id": "atlas-webhook-001",
+  "executed_at": "2026-11-11T16:03:36.807Z",
+  "git_version": "git version 2.51.0",
+  "node_version": "v22.22.1",
+  "run_directory": "/Users/jackspolski/Documents/Codex/2026-11-11/referenced-chatgpt-conversation-this-is-an/work/comparison/git-runs/atlas-git-aV6Lna",
+  "versions": {
+    "v1": "4e6521c7be0beb276ffdc75f4dda97a0a94d5da6",
+    "v2": "95c3ce40e73e72cc21269ea21de1b838f51b6d80"
+  },
+  "disclaimer": "8 aserciones sobre Git local; no son 8 requisitos de producto satisfechos. Sin servidor, PR real, ACL, revisión humana ni extracción automática.",
+  "results": [
+    {
+      "id": "G1",
+      "assertion": "passed",
+      "description": "La rama main aún no tiene la lección",
+      "observation": "Filtrar por main evita usar el borrador en el consumo normal."
+    },
+    {
+      "id": "G2",
+      "assertion": "passed",
+      "description": "El clon del mismo repo puede leer la rama candidata",
+      "observation": "Main-only no es confidencialidad de borradores: la rama candidata también se recibió."
+    },
+    {
+      "id": "G3",
+      "assertion": "passed",
+      "description": "Los marcadores privados no están en los blobs compartidos",
+      "observation": "La separación se consiguió preparando manualmente el candidato, no por anonimización de Git."
+    },
+    {
+      "id": "G4",
+      "assertion": "passed",
+      "description": "Editar cambia el commit y conserva la versión anterior",
+      "observation": "Identidad de versión comprobada; invalidación de una aprobación GitHub NO ejecutada."
+    },
+    {
+      "id": "G5",
+      "assertion": "passed",
+      "description": "Otro checkout recupera la lección publicada por búsqueda lexical",
+      "observation": "Consulta Git real, no dos humanos autenticados ni un harness/LLM en ejecución."
+    },
+    {
+      "id": "G6",
+      "assertion": "passed",
+      "description": "Una corrección no actualiza automáticamente la skill derivada",
+      "observation": "Git no interpreta esa dependencia semántica en este baseline."
+    },
+    {
+      "id": "G7",
+      "assertion": "passed",
+      "description": "Retirar de main no elimina historia ni copias previas",
+      "observation": "El borrado actual no es revocación de contenido ya distribuido."
+    },
+    {
+      "id": "G8",
+      "assertion": "passed",
+      "description": "Un repositorio de distribución separado no incluye la rama candidata",
+      "observation": "Alternativa fuerte: revisión restringida y distribución en repositorios distintos. Se comprobó separación de contenido, NO ACL ni aprobación real."
+    }
+  ],
+  "commands": [
+    {
+      "cwd": "atlas-shared",
+      "args": [
+        "init",
+        "-b",
+        "main"
+      ],
+      "stdout": "Initialized empty Git repository in /Users/jackspolski/Documents/Codex/2026-11-11/referenced-chatgpt-conversation-this-is-an/work/comparison/git-runs/atlas-git-aV6Lna/atlas-shared/.git/"
+    },
+    {
+      "cwd": "atlas-shared",
+      "args": [
+        "commit",
+        "--allow-empty",
+        "-m",
+        "Synthetic baseline"
+      ],
+      "stdout": "[main (root-commit) 1be3529] Synthetic baseline"
+    },
+    {
+      "cwd": "atlas-shared",
+      "args": [
+        "switch",
+        "-c",
+        "candidate"
+      ],
+      "stdout": ""
+    },
+    {
+      "cwd": "atlas-shared",
+      "args": [
+        "add",
+        "lesson.md"
+      ],
+      "stdout": ""
+    },
+    {
+      "cwd": "atlas-shared",
+      "args": [
+        "commit",
+        "-m",
+        "Candidate v1; NOT a GitHub approval"
+      ],
+      "stdout": "[candidate 4e6521c] Candidate v1; NOT a GitHub approval\n 1 file changed, 5 insertions(+)\n create mode 100644 lesson.md"
+    },
+    {
+      "cwd": "atlas-shared",
+      "args": [
+        "rev-parse",
+        "HEAD"
+      ],
+      "stdout": "4e6521c7be0beb276ffdc75f4dda97a0a94d5da6"
+    },
+    {
+      "cwd": "",
+      "args": [
+        "clone",
+        "--no-local",
+        "--branch",
+        "main",
+        "/Users/jackspolski/Documents/Codex/2026-11-11/referenced-chatgpt-conversation-this-is-an/work/comparison/git-runs/atlas-git-aV6Lna/atlas-shared",
+        "/Users/jackspolski/Documents/Codex/2026-11-11/referenced-chatgpt-conversation-this-is-an/work/comparison/git-runs/atlas-git-aV6Lna/reader-before-approval"
+      ],
+      "stdout": ""
+    },
+    {
+      "cwd": "reader-before-approval",
+      "args": [
+        "show",
+        "origin/candidate:lesson.md"
+      ],
+      "stdout": "# Reintentos de webhooks\n\nCaso sintético de prueba, no recomendación universal.\n\nMantener el mismo event_id como clave de idempotencia durante los reintentos. Para el entorno Atlas de esta prueba: máximo 5 reintentos, con esperas de 1, 2, 4, 8 y 16 segundos."
+    },
+    {
+      "cwd": "atlas-shared",
+      "args": [
+        "rev-list",
+        "--objects",
+        "--all"
+      ],
+      "stdout": "4e6521c7be0beb276ffdc75f4dda97a0a94d5da6\n1be35297d5feb981d95fb637567db9b0f472d208\n57c645b9d8c025b92400ec5c4b216f2f57712434 \n352bdda0159487e16b9bc7f363bfdea289981cf2 lesson.md\n4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+    },
+    {
+      "cwd": "atlas-shared",
+      "args": [
+        "cat-file",
+        "-p",
+        "4e6521c7be0beb276ffdc75f4dda97a0a94d5da6"
+      ],
+      "stdout": "tree 57c645b9d8c025b92400ec5c4b216f2f57712434\nparent 1be35297d5feb981d95fb637567db9b0f472d208\nauthor Synthetic Test Actor <test@example.invalid> 1794413016 -0300\ncommitter Synthetic Test Actor <test@example.invalid> 1794413016 -0300\n\nCandidate v1; NOT a GitHub approval"
+    },
+    {
+      "cwd": "atlas-shared",
+      "args": [
+        "cat-file",
+        "-p",
+        "1be35297d5feb981d95fb637567db9b0f472d208"
+      ],
+      "stdout": "tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904\nauthor Synthetic Test Actor <test@example.invalid> 1794413016 -0300\ncommitter Synthetic Test Actor <test@example.invalid> 1794413016 -0300\n\nSynthetic baseline"
+    },
+    {
+      "cwd": "atlas-shared",
+      "args": [
+        "cat-file",
+        "-p",
+        "57c645b9d8c025b92400ec5c4b216f2f57712434"
+      ],
+      "stdout": "100644 blob 352bdda0159487e16b9bc7f363bfdea289981cf2\tlesson.md"
+    },
+    {
+      "cwd": "atlas-shared",
+      "args": [
+        "cat-file",
+        "-p",
+        "352bdda0159487e16b9bc7f363bfdea289981cf2"
+      ],
+      "stdout": "# Reintentos de webhooks\n\nCaso sintético de prueba, no recomendación universal.\n\nMantener el mismo event_id como clave de idempotencia durante los reintentos. Para el entorno Atlas de esta prueba: máximo 5 reintentos, con esperas de 1, 2, 4, 8 y 16 segundos."
+    },
+    {
+      "cwd": "atlas-shared",
+      "args": [
+        "cat-file",
+        "-p",
+        "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+      ],
+      "stdout": ""
+    },
+    {
+      "cwd": "atlas-shared",
+      "args": [
+        "add",
+        "lesson.md"
+      ],
+      "stdout": ""
+    },
+    {
+      "cwd": "atlas-shared",
+      "args": [
+        "commit",
+        "-m",
+        "Edit candidate after hypothetical review"
+      ],
+      "stdout": "[candidate 95c3ce4] Edit candidate after hypothetical review\n 1 file changed, 1 insertion(+), 1 deletion(-)"
+    },
+    {
+      "cwd": "atlas-shared",
+      "args": [
+        "rev-parse",
+        "HEAD"
+      ],
+      "stdout": "95c3ce40e73e72cc21269ea21de1b838f51b6d80"
+    },
+    {
+      "cwd": "atlas-shared",
+      "args": [
+        "show",
+        "4e6521c7be0beb276ffdc75f4dda97a0a94d5da6:lesson.md"
+      ],
+      "stdout": "# Reintentos de webhooks\n\nCaso sintético de prueba, no recomendación universal.\n\nMantener el mismo event_id como clave de idempotencia durante los reintentos. Para el entorno Atlas de esta prueba: máximo 5 reintentos, con esperas de 1, 2, 4, 8 y 16 segundos."
+    },
+    {
+      "cwd": "atlas-shared",
+      "args": [
+        "show",
+        "95c3ce40e73e72cc21269ea21de1b838f51b6d80:lesson.md"
+      ],
+      "stdout": "# Reintentos de webhooks\n\nCaso sintético de prueba, no recomendación universal.\n\nMantener el mismo event_id como clave de idempotencia durante los reintentos. Para el entorno Atlas de esta prueba: máximo 3 reintentos, con esperas de 1, 2 y 4 segundos."
+    },
+    {
+      "cwd": "atlas-shared",
+      "args": [
+        "switch",
+        "main"
+      ],
+      "stdout": ""
+    },
+    {
+      "cwd": "atlas-shared",
+      "args": [
+        "merge",
+        "--ff-only",
+        "4e6521c7be0beb276ffdc75f4dda97a0a94d5da6"
+      ],
+      "stdout": "Updating 1be3529..4e6521c\nFast-forward\n lesson.md | 5 +++++\n 1 file changed, 5 insertions(+)\n create mode 100644 lesson.md"
+    },
+    {
+      "cwd": "",
+      "args": [
+        "clone",
+        "--no-local",
+        "--branch",
+        "main",
+        "/Users/jackspolski/Documents/Codex/2026-11-11/referenced-chatgpt-conversation-this-is-an/work/comparison/git-runs/atlas-git-aV6Lna/atlas-shared",
+        "/Users/jackspolski/Documents/Codex/2026-11-11/referenced-chatgpt-conversation-this-is-an/work/comparison/git-runs/atlas-git-aV6Lna/bruno-after-publication"
+      ],
+      "stdout": ""
+    },
+    {
+      "cwd": "bruno-after-publication",
+      "args": [
+        "grep",
+        "-n",
+        "event_id",
+        "HEAD",
+        "--",
+        "lesson.md"
+      ],
+      "stdout": "HEAD:lesson.md:5:Mantener el mismo event_id como clave de idempotencia durante los reintentos. Para el entorno Atlas de esta prueba: máximo 5 reintentos, con esperas de 1, 2, 4, 8 y 16 segundos."
+    },
+    {
+      "cwd": "atlas-shared",
+      "args": [
+        "add",
+        "skill.md"
+      ],
+      "stdout": ""
+    },
+    {
+      "cwd": "atlas-shared",
+      "args": [
+        "commit",
+        "-m",
+        "Create derived skill without dependency automation"
+      ],
+      "stdout": "[main ef2ad58] Create derived skill without dependency automation\n 1 file changed, 3 insertions(+)\n create mode 100644 skill.md"
+    },
+    {
+      "cwd": "atlas-shared",
+      "args": [
+        "add",
+        "lesson.md"
+      ],
+      "stdout": ""
+    },
+    {
+      "cwd": "atlas-shared",
+      "args": [
+        "commit",
+        "-m",
+        "Correct source to v2"
+      ],
+      "stdout": "[main b75a1b3] Correct source to v2\n 1 file changed, 1 insertion(+), 1 deletion(-)"
+    },
+    {
+      "cwd": "atlas-shared",
+      "args": [
+        "rm",
+        "lesson.md"
+      ],
+      "stdout": "rm 'lesson.md'"
+    },
+    {
+      "cwd": "atlas-shared",
+      "args": [
+        "commit",
+        "-m",
+        "Withdraw lesson from current tree"
+      ],
+      "stdout": "[main 9782673] Withdraw lesson from current tree\n 1 file changed, 5 deletions(-)\n delete mode 100644 lesson.md"
+    },
+    {
+      "cwd": "atlas-shared",
+      "args": [
+        "show",
+        "4e6521c7be0beb276ffdc75f4dda97a0a94d5da6:lesson.md"
+      ],
+      "stdout": "# Reintentos de webhooks\n\nCaso sintético de prueba, no recomendación universal.\n\nMantener el mismo event_id como clave de idempotencia durante los reintentos. Para el entorno Atlas de esta prueba: máximo 5 reintentos, con esperas de 1, 2, 4, 8 y 16 segundos."
+    },
+    {
+      "cwd": "atlas-approved-only",
+      "args": [
+        "init",
+        "-b",
+        "main"
+      ],
+      "stdout": "Initialized empty Git repository in /Users/jackspolski/Documents/Codex/2026-11-11/referenced-chatgpt-conversation-this-is-an/work/comparison/git-runs/atlas-git-aV6Lna/atlas-approved-only/.git/"
+    },
+    {
+      "cwd": "atlas-approved-only",
+      "args": [
+        "add",
+        "lesson.md"
+      ],
+      "stdout": ""
+    },
+    {
+      "cwd": "atlas-approved-only",
+      "args": [
+        "commit",
+        "-m",
+        "Publish sanitized snapshot without review-branch history"
+      ],
+      "stdout": "[main (root-commit) 84e577a] Publish sanitized snapshot without review-branch history\n 1 file changed, 5 insertions(+)\n create mode 100644 lesson.md"
+    },
+    {
+      "cwd": "",
+      "args": [
+        "clone",
+        "--no-local",
+        "/Users/jackspolski/Documents/Codex/2026-11-11/referenced-chatgpt-conversation-this-is-an/work/comparison/git-runs/atlas-git-aV6Lna/atlas-approved-only",
+        "/Users/jackspolski/Documents/Codex/2026-11-11/referenced-chatgpt-conversation-this-is-an/work/comparison/git-runs/atlas-git-aV6Lna/reader-approved-only"
+      ],
+      "stdout": ""
+    },
+    {
+      "cwd": "reader-approved-only",
+      "args": [
+        "branch",
+        "-a"
+      ],
+      "stdout": "* main\n  remotes/origin/HEAD -> origin/main\n  remotes/origin/main"
+    },
+    {
+      "cwd": "reader-approved-only",
+      "args": [
+        "rev-list",
+        "--all"
+      ],
+      "stdout": "84e577a466d878998b146ebe37b62a2449f41d20"
+    },
+    {
+      "cwd": "atlas-shared",
+      "args": [
+        "--version"
+      ],
+      "stdout": "git version 2.51.0"
+    }
+  ]
+}
