@@ -172,6 +172,10 @@ class Brain:
     def _access(self, who: str, target: Path) -> tuple[bool, bool]:
         """Return (read, write) for a path already checked by `_real`."""
         parts = self._parts(target)
+        if parts[:1] == (PEOPLE,) and len(parts) > 1:
+            # Absolute: no `.brainfold.toml`, not even the root's, widens or narrows it.
+            owner = parts[1] == self.alias(who)
+            return owner, owner
         folders = [self.root]
         for part in parts:
             if (folders[-1] / part).is_dir():
@@ -185,11 +189,8 @@ class Brain:
                 read = True
             if "write" in meta:
                 write = self._granted(who, meta["write"])
-        if parts[:1] == (PEOPLE,):
-            if len(parts) == 1:
-                return read, False  # only the server creates personal folders
-            owner = parts[1] == self.alias(who)
-            return owner, owner  # absolute: no `.brainfold.toml` widens or narrows it
+        if parts == (PEOPLE,):
+            return read, False  # only the server creates personal folders
         return read, read and write
 
     def _writable(self, who: str, path: str) -> Path:
