@@ -5,17 +5,10 @@ build-backend = "hatchling.build"
 [project]
 name = "oif"
 version = "0.1.0"
-description = "Shared capabilities and organizational context for conversational agents"
+description = "A shared, permissioned brain of folders and files for any agent harness, over MCP"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = [
-  "fastapi>=0.115,<1",
-  "httpx>=0.28,<1",
-  "jsonschema>=4.23,<5",
-  "mcp>=1.30,<2",
-  "pydantic>=2.10,<3",
-  "uvicorn>=0.34,<1",
-]
+dependencies = ["mcp>=1.30,<2", "uvicorn>=0.34,<1"]
 
 [project.scripts]
 oif = "oif.cli:main"
@@ -25,9 +18,6 @@ dev = ["pytest>=8.3,<10", "pytest-asyncio>=0.25,<2", "ruff>=0.11,<1"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/oif"]
-
-[tool.hatch.build.targets.wheel.force-include]
-"examples/atlas.json" = "oif/fixtures/atlas.json"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

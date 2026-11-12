@@ -5,14 +5,15 @@
 - Este es un proyecto personal del usuario, independiente de su trabajo.
 - La cuenta personal de GitHub elegida por el autor es `jackspolski1103`. Toda creación o publicación del proyecto debe usar esa cuenta; verificar la identidad autenticada antes de escribir en GitHub.
 - No usar datos, cuentas, repositorios, servicios ni credenciales laborales para implementarlo.
-- `docs/vision.md` es la base conceptual aceptada; sus ejemplos y tecnologías son propuestas, no decisiones de implementación ya aprobadas.
+- El alcance vigente está en `docs/scope.md` (decisión `0008`). Antes de proponer o construir algo, comprobar que no figura en su tabla «Lo que no es». `docs/vision.md` y `docs/research/` son antecedentes históricos, no el plan.
 - El autor quiere participar en decisiones de producto y arquitectura durante la construcción.
-- El primer producto es un harness de agentes utilizable desde terminal. Python es la elección confirmada para lo agéntico.
-- La colaboración es el núcleo del primer producto: CLI vinculado a un servicio y espacio compartidos. El autor rechazó el modo personal autónomo con colaboración opcional; no volver a proponerlo como primera entrega. La ubicación de ejecución, persistencia y alojamiento sigue pendiente.
-- La experiencia cotidiana debe ser conversacional y natural. No exigir comandos ni administración manual de memoria; las decisiones necesarias se presentan dentro de la conversación. Esto no autoriza compartir contenido privado automáticamente ni decide la política editorial.
-- Primero se concreta la documentación y luego se construye sobre ella. No iniciar una aplicación web ni implementar el runtime antes de cerrar el alcance del primer incremento con el autor.
-- El primer corte quedó aprobado: servicio compartido Python, CLI conversacional, MCP real con datos sintéticos y dos agentes especializados que reutilizan una capacidad versionada con permisos y errores consistentes. Véase `docs/decisions/0005-primer-corte-capacidad-compartida-mcp.md`. El autor eligió API personal de OpenAI para la primera conexión real al modelo. El alcance ya permite implementar este corte; no volver a pedir su aprobación.
-- La memoria se concibe como un repositorio navegable de carpetas, subcarpetas y archivos con permisos. El agente puede explorar libremente dentro de su autorización, sin exigir gestión manual al usuario. El primer corte incorpora listado y lectura; escritura y promoción siguen pendientes. Véase `docs/decisions/0006-memoria-como-repositorio-con-permisos.md`.
+- El producto es un cerebro compartido agnóstico al harness: carpetas y archivos con permisos expuestos por MCP para Claude Code, Codex u otros. No construir ni proponer un harness propio como producto. Python es la elección confirmada. Véase `docs/decisions/0007-cerebro-agnostico-al-harness.md`.
+- La colaboración es el núcleo: un servidor por equipo al que cada persona conecta su harness. El autor rechazó el modo local por persona; no volver a proponerlo.
+- La experiencia cotidiana es conversacional dentro del harness de cada persona; no exigir comandos ni administración manual de memoria.
+- El panel web sigue el estilo de Infisical o Langfuse: React (Vite, shadcn/ui) sobre la API del servidor Python, con cuentas propias de email y contraseña (decisión `0009`). Su primera versión cubre accesos por carpeta, miembros y tokens, explorador de solo lectura y actividad. No construir editor web de contenido ni motor de revisión y aprobación.
+- La memoria se concibe como un repositorio navegable de carpetas, subcarpetas y archivos con permisos. El agente puede explorar libremente dentro de su autorización, sin exigir gestión manual al usuario. Hay listado, lectura, escritura y búsqueda sobre disco (`src/oif/brain.py`); promoción y revisión siguen pendientes. Véase `docs/decisions/0006-memoria-como-repositorio-con-permisos.md`.
+
+- Todo el contenido del repositorio debe estar en inglés: código, nombres de herramientas, mensajes de error, documentación, ejemplos y este archivo (instrucción explícita del autor, 12/11/2026). Lo existente en español se traduce como parte del plan del core; todo archivo nuevo se escribe en inglés. La conversación con el autor sigue en español.
 
 ## Cómo colaborar
 

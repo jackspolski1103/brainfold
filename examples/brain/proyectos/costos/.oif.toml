@@ -1,0 +1,4 @@
+description = "Proceso y aprendizajes del equipo de costos."
+start_here = ["/proyectos/costos/proceso.md"]
+read = ["@costs"]
+write = ["@costs"]

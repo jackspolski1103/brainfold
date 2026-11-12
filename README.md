@@ -1,73 +1,59 @@
-# OIF — inteligencia organizacional colaborativa
+# OIF — cerebro compartido para agentes
 
-Proyecto personal e independiente. **OIF es un nombre provisional.**
+Proyecto personal e independiente, con intención open source. **OIF es un nombre provisional.** Todavía no hay repositorio remoto ni licencia elegida.
 
-Cuenta personal de GitHub elegida: [jackspolski1103](https://github.com/jackspolski1103). El repositorio remoto todavía no está creado.
-
-Proyecto con intención open source para construir agentes de trabajo que reutilizan herramientas, procedimientos y contexto entre soluciones, con especialización y permisos por proyecto.
+OIF es un servidor MCP que convierte una carpeta en el cerebro compartido de un equipo: archivos con permisos que cualquier harness (Claude Code, Codex u otro) lee y escribe. El alcance completo, incluido lo que deliberadamente no hace, está en [docs/scope.md](docs/scope.md).
 
 ## Estado
 
-Primera implementación de desarrollo: servicio HTTP compartido en Python, runtime acotado, CLI conversacional, adapter OpenAI Responses y conexión MCP Streamable HTTP con el SDK oficial. Dos agentes sintéticos de costos y contratos reutilizan una capacidad versionada.
+Implementación de desarrollo. Funcionan el servidor MCP sobre una carpeta en disco, los permisos de lectura y escritura por carpeta, el descubrimiento de skills, las cuentas con email y contraseña, los tokens por persona, los grupos, el registro de actividad y la API del panel. **La interfaz web todavía no existe**; por ahora la API se usa con `curl`. El servidor solo escucha en loopback. Los datos de ejemplo son sintéticos.
 
-La memoria se explora como un repositorio virtual de carpetas y archivos con permisos. El agente puede listar y leer por iniciativa propia; el servicio autoriza a solicitante y audiencia y conserva las restricciones de las carpetas padre.
-
-La autenticación por tokens y el estado en memoria son mecanismos de desarrollo. Faltan identidad y persistencia productivas, escritura de memoria, integración real con correo o Databricks y el flujo editorial completo. La conversación real con OpenAI requiere configurar la API personal elegida y un modelo disponible; las pruebas automáticas no consumen inferencia.
-
-## Ejecutar la verificación
+## Probarlo
 
 ```bash
 uv sync
-uv run oif verify-example
-uv run pytest -q
+uv run oif serve --root examples/brain        # cuentas y actividad en ./oif.db
+
+# En otra terminal: crear el administrador, un grupo y un token de harness.
+J='Content-Type: application/json'; U=http://127.0.0.1:8020
+curl -c cookies.txt -H "$J" -d '{"email":"vos@ejemplo.com","password":"una-clave-larga"}' $U/api/setup
+curl -b cookies.txt -X PUT -H "$J" -d '{"members":["vos@ejemplo.com"]}' $U/api/groups/costs
+curl -b cookies.txt -H "$J" -d '{"name":"claude code"}' $U/api/tokens   # muestra el token una vez
+
+claude mcp add --transport http oif $U/mcp --header "Authorization: Bearer <token>"
 ```
 
-`verify-example` levanta temporalmente un servicio HTTP y un servidor MCP, prueba una corrección común en ambos agentes y comprueba aislamiento, revocación y navegación de memoria. Cierra sus servidores al terminar.
+Herramientas MCP: `listar_memoria`, `leer_memoria`, `escribir_memoria`, `buscar_memoria`, `listar_skills`.
 
-El driver de modelo de esa verificación es programado: comprueba integración y permisos, no razonamiento ni calidad de respuestas. Los datos son sintéticos.
+## Formato del cerebro
 
-Para conversar con el modelo real, véase [la guía de desarrollo](docs/development.md). El CLI siempre se conecta al servicio compartido; los procesos de desarrollo en loopback no son un modo personal autónomo del producto.
+Cada carpeta puede tener un `.oif.toml`:
+
+```toml
+description = "Proceso y aprendizajes del equipo de costos."
+start_here = ["/proyectos/costos/proceso.md"]
+read = ["@costs"]     # emails, @grupo o "*"
+write = ["@costs"]
+```
+
+- **Leer** se deniega salvo que alguna carpeta del camino lo conceda; cada carpeta que declara `read` restringe a las que cuelgan de ella.
+- **Escribir** lo decide la carpeta más cercana que declare `write`; sin declaración, se deniega.
+- Los grupos y sus miembros se administran en la base de cuentas, por la API del panel.
+- Un administrador ve la estructura y los accesos de todas las carpetas, pero no lee contenido que no tenga concedido.
+- Los archivos que empiezan con punto y los enlaces simbólicos nunca son visibles para el agente.
+- Si la raíz es un repositorio git, cada escritura queda como commit a nombre de quien escribió.
+- Una skill es una carpeta con un `SKILL.md`. Véase `examples/brain/`.
+
+## Verificación
+
+```bash
+uv run pytest -q
+uv run ruff check src tests
+```
 
 ## Documentación
 
-- [Visión completa](docs/vision.md): documento base, conservado íntegramente.
-- [Panorama y oportunidad — investigación del 11/11/2026](docs/research/landscape-2026-11-11.md): antecedentes, alternativas, límites de novedad y propuesta de validación antes de implementar.
-- [Comparación ejecutada: Team Memory, cq y Markdown + PR](docs/research/comparison-atlas/README.md): un mismo caso sintético, resultados, límites y scripts reproducibles.
-- [Identidad y credenciales](docs/credentials.md): propuesta para login, conexiones personales, permisos y secretos.
-- [Especificación del CLI](docs/cli.md): experiencia de terminal, harness de referencia y conexión al servicio compartido.
-- [Primer incremento](docs/first-increment.md): recorrido propuesto y criterios de aceptación.
-- [Desarrollo y ejecución](docs/development.md): comandos reales, configuración y límites del primer corte.
-- [Registro de decisiones](docs/decisions/README.md): decisiones confirmadas y pendientes.
-- [Modo de colaboración](AGENTS.md): cómo construir el proyecto junto con su autor.
-
-## Dirección confirmada
-
-El producto empieza como **un harness de agentes que se usa desde la terminal**, con Python para lo agéntico. El autor aprobó el [primer corte de construcción](docs/decisions/0005-primer-corte-capacidad-compartida-mcp.md) después de concretar su alcance documental.
-
-La colaboración es el núcleo del primer producto: el CLI se vincula a un servicio y espacio compartidos. El autor descartó el modo personal autónomo con colaboración opcional. La ubicación de ejecución del agente y el alojamiento del servicio siguen pendientes. Véase [foco colaborativo](docs/decisions/0004-colaboracion-como-nucleo-del-producto.md).
-
-El uso cotidiano será conversacional y natural: pedir ayuda, continuar trabajo y corregir al agente, sin administrar memorias mediante comandos. Permisos, versiones y publicación se resuelven detrás de esa experiencia; las decisiones necesarias se piden dentro de la conversación. Véase [conversación natural](docs/decisions/0002-conversacion-natural.md).
-
-Para el primer prototipo, el agente incorporará automáticamente solo conocimiento compartido aprobado, publicado, vigente y autorizado. Los borradores permanecerán en un circuito de revisión autorizado; la memoria y el material privados conservarán su alcance. Véase [consumo de conocimiento compartido](docs/decisions/0003-consumo-de-conocimiento-compartido.md).
-
-La visión original se conserva íntegra. Las decisiones posteriores en `docs/decisions/` concretan su implementación: el primer punto de entrada será la terminal, y una web o los adapters de mensajería podrán añadirse después.
-
-La [memoria como repositorio con permisos](docs/decisions/0006-memoria-como-repositorio-con-permisos.md) es el modelo de navegación confirmado. En este corte se implementan listado y lectura; edición y promoción siguen pendientes.
-
-## Primer recorrido implementado
-
-Una identidad de desarrollo accede al agente de costos y otra al de contratos. Cada agente usa sus instrucciones y su proyecto, explora la memoria autorizada y consulta la misma capacidad MCP con argumentos de alcance fijados por el servicio. Una corrección versionada se aplica a ambos sin copiar lógica.
-
-Compartir aprendizajes, revisar y publicar permanece en la visión; no es un paso obligatorio para cada tarea con herramientas ya autorizadas. Los archivos y capacidades precargados en el manifiesto sintético son configuración confiable de desarrollo, no un workflow de aprobación implementado.
-
-## Decisiones siguientes
-
-1. Probar conversación con la API personal de OpenAI configurada fuera del chat.
-2. Elegir autenticación, almacenamiento y custodia productivos para el siguiente incremento.
-3. Elegir la primera integración externa personal y concretar escritura y publicación de memoria.
-
-Nombre, visibilidad y licencia se decidirán antes de crear o publicar el repositorio remoto en `jackspolski1103`. El [registro de decisiones](docs/decisions/README.md) conserva el resto de las propuestas pendientes.
-
-## Licencia
-
-La visión sugiere Apache-2.0. La licencia definitiva permanece pendiente de elección; todavía no se incluye un archivo LICENSE ni se afirma que este repositorio esté publicado bajo esa licencia.
+- [Alcance](docs/scope.md)
+- [Registro de decisiones](docs/decisions/README.md)
+- [Modo de colaboración](AGENTS.md)
+- Antecedentes históricos: [visión original](docs/vision.md), [panorama](docs/research/landscape-2026-11-11.md) y [comparación ejecutada](docs/research/comparison-atlas/README.md)

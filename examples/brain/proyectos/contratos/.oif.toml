@@ -1,0 +1,4 @@
+description = "Proceso y aprendizajes del equipo de contratos."
+start_here = ["/proyectos/contratos/proceso.md"]
+read = ["@contracts"]
+write = ["@contracts"]

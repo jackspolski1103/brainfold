@@ -1,0 +1,4 @@
+description = "Cerebro sintético de Atlas, una organización ficticia de prueba."
+start_here = ["/comun/convenciones.md", "/skills"]
+read = ["@costs", "@contracts"]
+
