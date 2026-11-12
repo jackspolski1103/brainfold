@@ -176,3 +176,49 @@ async def test_a_harness_connects_with_a_personal_token_until_it_is_revoked(tmp_
         assert (await call(token, "listar_memoria", {}))[0] is True
     done = {(row["action"], row["ok"]) for row in accounts.activity()}
     assert {("skills", True), ("escribir", True), ("leer", True)} <= done
+
+
+async def test_use_skill_lists_only_what_each_identity_can_read(tmp_path: Path) -> None:
+    shutil.copytree(EXAMPLE, tmp_path / "brain")
+    app = create_app(tmp_path / "brain", tmp_path / "oif.db")
+    accounts = Accounts(tmp_path / "oif.db")
+    accounts.setup(ALICE, PASSWORD)
+    accounts.accept(accounts.invite(BOB, "member"), PASSWORD)
+    accounts.set_group("costs", [ALICE])
+    accounts.set_group("contracts", [BOB])
+    tokens = {who: accounts.issue(who, "access", "harness")[1] for who in (ALICE, BOB)}
+
+    async def session_for(token: str | None, action: Any) -> Any:
+        headers = {"Authorization": f"Bearer {token}"} if token else {}
+        async with streamablehttp_client(url, headers=headers) as (read, write, _):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                return await action(session)
+
+    async def description(session: ClientSession) -> str:
+        tools = (await session.list_tools()).tools
+        return next(tool.description for tool in tools if tool.name == "use_skill")
+
+    async with running(app) as url:
+        seen = await session_for(tokens[ALICE], description)
+        assert "analizar-costos-" in seen and "muestras truncadas" in seen
+        name = seen.split("- analizar-costos-")[1].split(":")[0]
+        for other in (tokens[BOB], None):
+            assert "analizar-costos" not in await session_for(other, description)
+
+        async def use(session: ClientSession) -> Any:
+            return await session.call_tool("use_skill", {"name": f"analizar-costos-{name}"})
+
+        assert "Pedí primero el resumen" in (await session_for(tokens[ALICE], use)).content[0].text
+        assert (await session_for(tokens[BOB], use)).isError
+
+        async def instructions(token: str | None) -> str:
+            headers = {"Authorization": f"Bearer {token}"} if token else {}
+            async with streamablehttp_client(url, headers=headers) as (read, write, _):
+                async with ClientSession(read, write) as session:
+                    return (await session.initialize()).instructions or ""
+
+        # Tool descriptions can be deferred by the harness; instructions are always in context.
+        assert f"analizar-costos-{name}" in await instructions(tokens[ALICE])
+        for other in (tokens[BOB], None):
+            assert "analizar-costos" not in await instructions(other)

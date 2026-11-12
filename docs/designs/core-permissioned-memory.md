@@ -57,7 +57,7 @@ Tool names are English: `list`, `read`, `write`, `edit`, `append`, `move`, `dele
 
 ### Layer 2: the brain arrives on its own
 
-- **Skills through a `use_skill` tool (author decision D18).** The description of `use_skill` lists, for the calling identity, the name and one-line description of every readable, valid skill, so the model sees them in every session and calls `use_skill(name)` to receive the procedure. This is how the skill spreads without anyone telling the agent, and it works on every harness because it only needs tools. The skill name is the skill folder's name reduced to `[a-z0-9-]` plus a six-character digest of its full path (lengthened on collision). An invalid `SKILL.md` is skipped. The list is computed per identity when tools are listed, capped at 256 entries and at a fixed description size, with a note when truncated. A new skill appears when a session starts or reconnects. MCP prompts are not used; `list_skills` is removed.
+- **Skills through a `use_skill` tool (author decision D18).** The description of `use_skill` lists, for the calling identity, the name and one-line description of every readable, valid skill, and the same listing travels in the server instructions returned at session start, so the model sees them in every session and calls `use_skill(name)` to receive the procedure. The instructions are the path that works in Claude Code, which defers MCP tool descriptions until the model searches for a tool (spike T1, 2026-11-12); the tool description remains for harnesses that load it. The instructions carry at most 12 skills with descriptions cut to 120 characters and point to the tool for the rest. This is how the skill spreads without anyone telling the agent, and it works on every harness because it only needs tools. The skill name is the skill folder's name reduced to `[a-z0-9-]` plus a six-character digest of its full path (lengthened on collision). An invalid `SKILL.md` is skipped. The list is computed per identity when tools are listed, capped at 256 entries and at a fixed description size, with a note when truncated. A new skill appears when a session starts or reconnects. MCP prompts are not used; `list_skills` is removed.
 - **Skill trust model.** A skill is listed to everyone who can read its folder. Publishing requires write permission on that folder, which only an administrator declares. The `use_skill` result shows the path and, when a revision record exists, the author of the file's latest revision (after a restore that is the restorer), read with one query per listing. The same trust model applies to folder guidance: `description` and `start_here` are written by members with write permission and steer other agents. The risk that a member with write publishes a wrong or malicious procedure is accepted explicitly and bounded by those controls plus history. Server instructions state that a skill is a procedure published by a teammate with write permission, never widens permissions, and that all other content is information.
 - **Guidance on connect.** `list('/')` returns the root guidance and the user's personal folder.
 - **Skill validation.** Any operation whose result is a file named `SKILL.md` requires front matter with `name` and `description`.
@@ -130,7 +130,7 @@ Tool names are English: `list`, `read`, `write`, `edit`, `append`, `move`, `dele
 
 ## Open questions
 
-1. Whether Claude Code and Codex re-read tool descriptions on each session and tolerate a per-identity skill listing of this size. Answered by the spike in step 0, before anything else is built.
+1. Answered for Claude Code by spike T1: tool descriptions are deferred and not in context, server instructions are, and a per-identity listing there made a fresh session use a new skill unprompted. Still open: the same check on Codex, and how Claude Code behaves when the listing exceeds the 12 skills carried in the instructions.
 2. Whether the MCP library's host-header check accepts requests forwarded by a proxy when the server binds to loopback. Needs a live check before cross-machine work.
 
 ## Build order (two phases, author decision D19)
@@ -245,7 +245,7 @@ After this plan the brain is complete for agents on harnesses with a shell: full
 | upload | interrupted mid-body | yes | yes | nothing stored | server log |
 | startup | leftover temp files or git lock | yes | yes | none | startup log |
 | setup | unclaimed public server | yes | yes | forbidden without code | activity |
-| `use_skill` listing | harness does not re-read tool descriptions per session | unknown | step 0 spike | skill not listed | no |
+| `use_skill` listing | harness defers tool descriptions (Claude Code does) | yes | spike T1 live, plus unit test | listing arrives in server instructions | no |
 | git call | hangs on signing or a hook | yes (R11) | yes | `versioned: false` after timeout | activity flag |
 | any write | hand edit or crash left uncommitted content | yes (R13) | yes | none; content preserved as baseline | activity |
 | path | case-variant of an existing name | yes (R14) | yes | `unavailable` or `already_exists` | activity |
@@ -295,10 +295,11 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
 Effort ratios assume features ~30x and tests ~50x human to CC; the CC figures are lower bounds (see Estimates).
 T1 to T11 are phase 1; T12 to T16 are phase 2.
 
-- [ ] **T1 (P1, human: ~3h / CC: ~1h)** — server — Spike: use_skill tool with a per-identity description, checked live in Claude Code
+- [x] **T1 (P1, human: ~3h / CC: ~1h)** — server — Spike: use_skill tool with a per-identity description, checked live in Claude Code
   - Surfaced by: Outside review 1 and 2; D18
   - Files: src/oif/server.py
   - Verify: New Claude Code session with a second account lists a skill created by the first and uses it unprompted
+  - Done 2026-11-12: one account wrote `/skills/cierre-mensual/SKILL.md`; a fresh headless Claude Code 2.1.322 session for a second account, given a matching task with no mention of skills, called `use_skill` and followed the procedure (activity row `usar_skill`, output carried the skill's marker line). A first run showed the tool description is deferred, so the listing was moved into the per-identity server instructions. Code: `src/oif/server.py`, test in `tests/test_server.py`.
 - [ ] **T2 (P1, human: ~2d / CC: ~1h)** — repo — Translate the repository to English, freeze tool names and error codes, remove historical docs, add prior-art page, update scope and decisions
   - Surfaced by: E5; D11, D16; R10, R15
   - Files: src/oif/, tests/, examples/, docs/, AGENTS.md, README.md
