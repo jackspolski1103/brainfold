@@ -85,9 +85,29 @@ def _is_text(data: bytes) -> bool:
     return True
 
 
+def _tidy(path: Any) -> Any:
+    """Accept the path forms agents send: no leading slash, or one trailing slash."""
+    if not isinstance(path, str):
+        return path
+    if not path.startswith("/"):
+        path = f"/{path}"
+    return path[:-1] if len(path) > 1 and path.endswith("/") and not path.endswith("//") else path
+
+
 def _locked(method: Callable[..., Any]) -> Callable[..., Any]:
+    names = method.__code__.co_varnames[1 : method.__code__.co_argcount]
+    paths = {"path", "source", "destination"}
+
     @functools.wraps(method)
     def wrapper(self: Brain, *args: Any, **kwargs: Any) -> Any:
+        args = (
+            tuple(
+                _tidy(value) if name in paths else value
+                for name, value in zip(names, args, strict=False)
+            )
+            + args[len(names) :]
+        )
+        kwargs = {key: _tidy(value) if key in paths else value for key, value in kwargs.items()}
         with self._lock:
             try:
                 return method(self, *args, **kwargs)

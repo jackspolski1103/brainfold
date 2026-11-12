@@ -98,7 +98,6 @@ def test_denials_are_indistinguishable_from_absence(brain: Brain) -> None:
         (ALICE, brain.read, "/.brainfold.toml"),
         (ALICE, brain.read, "/common/../.brainfold.toml"),
         (ALICE, brain.list, "/.git"),
-        (ALICE, brain.read, "common/conventions.md"),
         (ALICE, brain.read, "/common//conventions.md"),
         (ALICE, brain.read, "/common/%2e%2e/.brainfold.toml"),
         (ALICE, brain.read, "/common\\conventions.md"),

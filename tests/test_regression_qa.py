@@ -51,3 +51,16 @@ def test_an_administrator_cannot_open_a_personal_folder_even_in_manage_mode(brai
     names = [entry["path"] for entry in brain.list(ADMIN, "/people", manage=True)["entries"]]
     assert names == ["/people/alice-1a2b"]  # the administrator still sees that it exists
     assert code(brain.list, ADMIN, "/people/alice-1a2b", manage=True) == "unavailable"
+
+
+# Regression: ISSUE-001 — agents send folder paths with a trailing slash or without the
+# leading one; both were answered "not available".
+def test_common_path_forms_are_accepted_and_answers_use_the_canonical_path(brain: Brain) -> None:
+    assert brain.list(ALICE, "/projects/costs/")["path"] == "/projects/costs"
+    assert brain.list(ALICE, "projects/costs")["path"] == "/projects/costs"
+    assert brain.read(ALICE, "projects/costs/process.md")["path"] == "/projects/costs/process.md"
+    assert brain.write(ALICE, "projects/costs/new.md", "x")["path"] == "/projects/costs/new.md"
+    made = brain.create_folder(ALICE, "/projects/costs/reports/", "Reports")
+    assert made["path"] == "/projects/costs/reports"
+    for unsafe in ("/projects//costs", "projects/costs/../../.brainfold.toml", "/projects/costs//"):
+        assert code(brain.list, ALICE, unsafe) == "unavailable", unsafe
