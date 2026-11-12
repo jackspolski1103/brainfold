@@ -23,4 +23,7 @@ RUN pip install --no-cache-dir .
 USER brainfold
 EXPOSE 8020
 ENTRYPOINT ["brainfold"]
-CMD ["serve", "--root", "/brain", "--db", "/data/brainfold.db", "--host", "0.0.0.0"]
+# Root, database, port and public address can also come from BRAINFOLD_ROOT, BRAINFOLD_DB,
+# PORT and BRAINFOLD_PUBLIC_URL.
+ENV BRAINFOLD_ROOT=/brain BRAINFOLD_DB=/data/brainfold.db
+CMD ["serve", "--host", "0.0.0.0"]

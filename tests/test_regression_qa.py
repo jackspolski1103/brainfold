@@ -101,3 +101,25 @@ def test_serve_reports_a_busy_port_without_announcing_the_server(
         assert cli.main([*arguments, "--port", port]) == 1
     output = capsys.readouterr()
     assert "MCP at" not in output.out and "in use" in output.err
+
+
+def test_serve_takes_its_settings_from_the_environment_and_creates_its_folders(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import socket
+
+    from brainfold import cli
+
+    with socket.socket() as taken:  # a busy port makes `serve` return after setting up
+        taken.bind(("127.0.0.1", 0))
+        taken.listen()
+        monkeypatch.setenv("BRAINFOLD_ROOT", str(tmp_path / "volume" / "brain"))
+        monkeypatch.setenv("BRAINFOLD_DB", str(tmp_path / "volume" / "accounts" / "b.db"))
+        monkeypatch.setenv("PORT", str(taken.getsockname()[1]))
+        monkeypatch.setenv("BRAINFOLD_PUBLIC_URL", "https://brain.example.test")
+        assert cli.main(["serve"]) == 1
+    assert (tmp_path / "volume" / "brain" / ".git").is_dir()
+    assert (tmp_path / "volume" / "accounts" / "b.db").is_file()
+    assert "in use" in capsys.readouterr().err
+    monkeypatch.setenv("BRAINFOLD_PUBLIC_URL", "http://brain.example.test")
+    assert cli.main(["serve"]) == 1  # a public address must be https

@@ -34,3 +34,4 @@ work/
 tmp/
 node_modules/
 /src/brainfold/panel/
+.gstack/

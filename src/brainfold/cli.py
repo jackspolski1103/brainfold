@@ -95,15 +95,28 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="brainfold", description="A shared brain over MCP.")
     commands = parser.add_subparsers(dest="command", required=True)
     serve = commands.add_parser("serve", help="Serve a folder as a shared brain")
-    serve.add_argument("--root", type=Path, required=True)
-    serve.add_argument("--db", type=Path, default=Path("brainfold.db"), help="Accounts database")
+    env = os.environ.get  # hosting platforms configure a container through its environment
+    serve.add_argument(
+        "--root",
+        type=Path,
+        default=env("BRAINFOLD_ROOT"),
+        required=not env("BRAINFOLD_ROOT"),
+        help="Brain folder, created if missing (or set BRAINFOLD_ROOT)",
+    )
+    serve.add_argument(
+        "--db",
+        type=Path,
+        default=Path(env("BRAINFOLD_DB", "brainfold.db")),
+        help="Accounts database (or set BRAINFOLD_DB)",
+    )
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument(
         "--public-url",
+        default=env("BRAINFOLD_PUBLIC_URL"),
         help="https address of the TLS proxy in front of the server; required to listen "
-        "beyond loopback",
+        "beyond loopback (or set BRAINFOLD_PUBLIC_URL)",
     )
-    serve.add_argument("--port", type=int, default=8020)
+    serve.add_argument("--port", type=int, default=int(env("PORT", "8020")))
     put = commands.add_parser("put", help="Upload a file of any type to the brain")
     put.add_argument("file", type=Path)
     put.add_argument("path", help="Destination in the brain, for example /hr/salaries.xlsx")
@@ -132,7 +145,10 @@ def main(argv: list[str] | None = None) -> int:
                 "Listening beyond loopback needs --public-url: run the server behind a proxy "
                 "that terminates TLS.",
             )
-        app = create_app(args.root, args.db, host=args.host, port=args.port, public_url=public)
+        root = Path(args.root)
+        root.mkdir(parents=True, exist_ok=True)
+        Path(args.db).parent.mkdir(parents=True, exist_ok=True)
+        app = create_app(root, args.db, host=args.host, port=args.port, public_url=public)
     except BrainfoldError as exc:
         print(f"Error ({exc.code}): {exc.message}", file=sys.stderr)
         return 1
