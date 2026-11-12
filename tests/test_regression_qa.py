@@ -72,3 +72,32 @@ def test_storing_identical_content_again_is_not_reported_as_unversioned(brain: B
     first = brain.write(ALICE, "/projects/costs/same.md", "same")
     again = brain.write(ALICE, "/projects/costs/same.md", "same", first["version"])
     assert again["versioned"] and brain.unversioned == 0
+
+
+# Regression: ISSUE-008 — reading a folder gave the same answer as a missing path.
+def test_reading_a_folder_points_the_agent_to_list(brain: Brain) -> None:
+    with pytest.raises(BrainfoldError) as error:
+        brain.read(ALICE, "/projects/costs")
+    assert error.value.code == "unavailable" and "list" in error.value.message
+    with pytest.raises(BrainfoldError) as hidden:
+        brain.read(DANA, "/projects/costs")  # not readable: nothing extra is revealed
+    assert "list" not in hidden.value.message
+
+
+# Regression: ISSUE-009 — with the port taken, `serve` announced itself before failing.
+def test_serve_reports_a_busy_port_without_announcing_the_server(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import socket
+
+    from brainfold import cli
+
+    shutil.copytree(EXAMPLE, tmp_path / "brain")
+    with socket.socket() as taken:
+        taken.bind(("127.0.0.1", 0))
+        taken.listen()
+        port = str(taken.getsockname()[1])
+        arguments = ["serve", "--root", str(tmp_path / "brain"), "--db", str(tmp_path / "a.db")]
+        assert cli.main([*arguments, "--port", port]) == 1
+    output = capsys.readouterr()
+    assert "MCP at" not in output.out and "in use" in output.err

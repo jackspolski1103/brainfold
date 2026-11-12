@@ -6,6 +6,7 @@ import argparse
 import ipaddress
 import json
 import os
+import socket
 import stat
 import sys
 import tomllib
@@ -137,6 +138,13 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     except OSError:
         print("Error: a file or folder does not exist or cannot be read.", file=sys.stderr)
+        return 1
+    try:  # say so plainly, and before announcing the server, when the port is taken
+        with socket.socket(socket.AF_INET6 if ":" in args.host else socket.AF_INET) as probe:
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            probe.bind((args.host, args.port))
+    except OSError:
+        print(f"Error: port {args.port} on {args.host} is already in use.", file=sys.stderr)
         return 1
     print(f"Brainfold · MCP at http://{args.host}:{args.port}/mcp · API at /api", flush=True)
     if app.state.setup_code:

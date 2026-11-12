@@ -1,7 +1,14 @@
 @import "tailwindcss";
 
+/* Dark styles follow a class that main.tsx keeps in step with the system setting. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
+}
+
+:root.dark {
+  color-scheme: dark;
 }
 
 body {

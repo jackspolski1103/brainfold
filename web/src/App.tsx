@@ -140,6 +140,7 @@ export function App() {
       <main className="min-w-0 flex-1 space-y-4 p-4 md:p-8">
         {route.startsWith("/brain") && <Brain admin={admin} kind="folder" path={route.slice("/brain".length) || "/"} />}
         {route.startsWith("/file") && <Brain admin={admin} kind="file" path={route.slice("/file".length)} />}
+        {(route === "/members" || route === "/activity") && !admin && <Notice>Only administrators can open this page.</Notice>}
         {route === "/members" && admin && <Members self={user.email} />}
         {route === "/tokens" && <Tokens />}
         {route === "/activity" && admin && <ActivityPage />}

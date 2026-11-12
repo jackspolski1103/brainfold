@@ -120,6 +120,12 @@ export function Brain({ admin, kind, path }: { admin: boolean; kind: "folder" | 
         <>
           <Card title={name(listing.path)}>
             <p className="text-sm">{listing.description || <span className="text-zinc-500">No description yet.</span>}</p>
+            {listing.home && (
+              <p className="mt-3 text-sm">
+                <a href={`#/brain${listing.home}`} className="font-medium text-blue-700 hover:underline dark:text-blue-300">Your personal folder</a>
+                <span className="text-zinc-500"> · only you can read or write it</span>
+              </p>
+            )}
             {listing.start_here.length > 0 && (
               <p className="mt-3 flex flex-wrap items-center gap-2 text-sm">
                 <span className="text-zinc-500">Start here</span>

@@ -44,7 +44,7 @@ export function Members({ self }: { self: string }) {
   const saveGroup = (groupName: string, list: string) =>
     attempt(async () => {
       await api("PUT", `/api/groups/${encodeURIComponent(groupName)}`, { members: parse(list) });
-      setDrafts(({ [groupName]: _saved, ...rest }) => rest);
+      setDrafts(({ [groupName]: _saved, "+": _typed, ...rest }) => rest);
       setGroup("");
     });
 

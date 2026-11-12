@@ -404,7 +404,10 @@ class Brain:
 
     def _bytes(self, who: str, path: str) -> tuple[Path, bytes]:
         target = self._real(path)
-        if not self._access(who, target)[0] or not target.is_file():
+        readable = self._access(who, target)[0]
+        if readable and target.is_dir():
+            raise BrainfoldError("unavailable", "That path is a folder. Use list to see inside it.")
+        if not readable or not target.is_file():
             raise _unavailable()
         return target, target.read_bytes()
 
