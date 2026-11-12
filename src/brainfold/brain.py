@@ -317,6 +317,19 @@ class Brain:
         target = self._real(path)
         read, write = self._access(who, target)
         if not (read or manage) or not target.is_dir():
+            home = self.alias(who)
+            if target == self.root and home and (self.root / PEOPLE / home).is_dir():
+                # Someone who cannot read the root still has to find their own folder.
+                own = f"/{PEOPLE}/{home}"
+                return {
+                    "path": "/",
+                    "description": "",
+                    "start_here": [],
+                    "can_write": False,
+                    "entries": [{"path": own, "kind": "directory"}],
+                    "truncated": False,
+                    "home": own,
+                }
             raise _unavailable()
         meta = self._meta(target)
         entries: list[dict[str, Any]] = []
