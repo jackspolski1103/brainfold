@@ -20,6 +20,7 @@ from brainfold import BrainfoldError, short_name
 EMAIL = re.compile(r"[^@\s]+@[^@\s]+")
 GROUP = re.compile(r"[a-z0-9][a-z0-9_-]{0,62}")
 SESSION_SECONDS = 7 * 24 * 3600
+LINK_SECONDS = 7 * 24 * 3600  # an invite or reset link left unused
 MAX_FAILURES = 5
 LOCK_SECONDS = 60
 
@@ -57,6 +58,10 @@ CREATE TABLE revisions(
 CREATE INDEX revisions_path ON revisions(path);
 """,
     "CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+    """
+ALTER TABLE users ADD COLUMN invited REAL;
+UPDATE users SET invited = strftime('%s', 'now') WHERE invite IS NOT NULL;
+""",
 )
 
 
@@ -148,8 +153,9 @@ class Accounts:
         try:
             with self._lock:
                 self._run(
-                    "INSERT INTO users(email, role, invite, created) VALUES (?, ?, ?, ?)",
-                    *(_email(email), role, _digest(token), time.time()),
+                    "INSERT INTO users(email, role, invite, created, invited) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    *(_email(email), role, _digest(token), time.time(), time.time()),
                 )
                 self._assign_alias(_email(email))
         except sqlite3.IntegrityError:
@@ -161,16 +167,20 @@ class Accounts:
     def accept(self, invite: Any, password: Any) -> str:
         hashed = _password(password)
         with self._lock:
-            rows = self._run("SELECT email FROM users WHERE invite = ?", _digest(str(invite)))
+            rows = self._run(
+                "SELECT email FROM users WHERE invite = ? AND invited > ?",
+                *(_digest(str(invite)), time.time() - LINK_SECONDS),
+            )
             if not rows:
                 raise BrainfoldError(
-                    "invalid_invite", "The invite is not valid or was already used."
+                    "invalid_invite", "The link is not valid, has expired or was already used."
                 )
             self._run(
                 "UPDATE users SET password = ?, invite = NULL WHERE email = ?", hashed, rows[0][0]
             )
-            # A reset link also signs the account out everywhere.
-            self._run("DELETE FROM tokens WHERE email = ? AND kind = 'session'", rows[0][0])
+            # A reset link also signs the account out everywhere and disconnects its
+            # harnesses: whoever held the old password may have created a token with it.
+            self._run("DELETE FROM tokens WHERE email = ?", rows[0][0])
         return rows[0][0]
 
     def users(self) -> list[dict[str, Any]]:
@@ -192,6 +202,8 @@ class Accounts:
             admins = [row[0] for row in self._run("SELECT email FROM users WHERE role = 'admin'")]
             if admins == [email]:
                 raise BrainfoldError("last_admin", "The only administrator cannot be removed.")
+            if not self._run("SELECT 1 FROM users WHERE email = ?", email):
+                raise BrainfoldError("unavailable", "There is no account with that email.")
             left = [
                 row[0] for row in self._run("SELECT grp FROM memberships WHERE email = ?", email)
             ]
@@ -214,6 +226,11 @@ class Accounts:
             if self._run("SELECT 1 FROM retired_groups WHERE name = ?", name):
                 # Old revisions name this group; new members must not inherit its history.
                 raise BrainfoldError("invalid_group", "That group name was retired. Pick another.")
+            active = {row[0] for row in self._run("SELECT email FROM users WHERE password != ''")}
+            if not set(members) <= active:
+                raise BrainfoldError(
+                    "invalid_group", "A member has no account or has not accepted their invite."
+                )
             if not members and name in self.groups():
                 self._run("INSERT INTO retired_groups VALUES (?)", name)
             try:
@@ -266,7 +283,10 @@ class Accounts:
         with self._lock:
             if not self._run("SELECT 1 FROM users WHERE email = ?", email):
                 raise BrainfoldError("unavailable", "There is no account with that email.")
-            self._run("UPDATE users SET invite = ? WHERE email = ?", _digest(token), email)
+            self._run(
+                "UPDATE users SET invite = ?, invited = ? WHERE email = ?",
+                *(_digest(token), time.time(), email),
+            )
         return token
 
     def setting(self, key: str) -> str | None:

@@ -11,7 +11,7 @@ The first account is an administrator. The last administrator cannot be removed.
 
 ## Inviting
 
-**Members → Invite** creates a one-time link. Brainfold does not send email: pass the link on yourself. The person opens it, chooses a password of at least 10 characters, and is in. The link is shown once: if it gets lost before it is used, **New invite link** on that person's row creates another and cancels the first.
+**Members → Invite** creates a one-time link that works for 7 days. Brainfold does not send email: pass the link on yourself. The person opens it, chooses a password of at least 10 characters, and is in. The link is shown once: if it gets lost or expires before it is used, **New invite link** on that person's row creates another and cancels the first.
 
 ## Groups
 
@@ -24,7 +24,7 @@ A group is a name for several people. Granting a folder to `@finance` grants it 
 ## Passwords
 
 - Each person changes their own password in **Account**; other sessions are signed out.
-- An administrator can **reset** a member's password: this creates a one-time link, and the current password keeps working until the link is used.
+- An administrator can **reset** a member's password: this creates a one-time link that works for 7 days, and the current password keeps working until the link is used. Using it ends every session and **revokes every harness token** of that account, so the person creates new tokens in **Connect**. Use it when an account may be compromised.
 - After five failed sign-ins, an email is locked from that address for one minute.
 
 If the only administrator is locked out, see [recovering access](#/docs/durability).
