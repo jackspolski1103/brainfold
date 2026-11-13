@@ -14,7 +14,7 @@ function InviteDialog({ open, onClose, onDone }: { open: boolean; onClose: () =>
     event.preventDefault();
     try {
       const result = await api<{ invite: string }>("POST", "/api/users", { email, role });
-      onDone({ url: `${location.origin}/#/accept/${result.invite}`, note: `Send this link to ${email}. It works once and is not shown again.` });
+      onDone({ url: `${location.origin}/#/accept/${result.invite}`, note: `Send this link to ${email}. It works once, for 7 days, and is not shown again.` });
       setEmail("");
       setError("");
       onClose();
@@ -134,7 +134,7 @@ export function Members({ self, tab }: { self: string; tab: "users" | "groups" }
   const reset = (email: string, pending: boolean) =>
     attempt(async () => {
       const result = await api<{ invite: string }>("POST", `/api/users/${encodeURIComponent(email)}/reset`, {});
-      setLink({ url: `${location.origin}/#/accept/${result.invite}`, note: pending ? `Send this link to ${email}. It works once and replaces the invitation sent before.` : `Send this link to ${email} to choose a new password. It works once; their current password keeps working until they use it.` });
+      setLink({ url: `${location.origin}/#/accept/${result.invite}`, note: pending ? `Send this link to ${email}. It works once, for 7 days, and replaces the invitation sent before.` : `Send this link to ${email} to choose a new password. It works once, for 7 days. Their current password and harness tokens keep working until they use it; then every session and token of theirs ends.` });
     });
   const needle = filter.trim().toLowerCase();
   const shown = members.filter((member) => `${member.email} ${member.role} ${member.groups.join(" ")}`.toLowerCase().includes(needle));

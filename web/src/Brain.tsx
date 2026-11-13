@@ -188,11 +188,12 @@ function FolderView({ listing, admin, onEdit, onChanged }: { listing: Listing; a
         } catch (failure) {
           const exists = failure instanceof ApiError && failure.code === "already_exists";
           if (!exists) throw failure;
+          // Read the version before asking: a change made while the question is open is a conflict, not overwritten.
+          const current = await api<FileView>("GET", `/api/file?path=${encodeURIComponent(path)}`);
           if (!confirm(`${file.name} already exists in this folder. Replace it? The current version stays in the history.`)) {
             done.push({ ok: false, text: `${file.name}: kept the existing file.` });
             continue;
           }
-          const current = await api<FileView>("GET", `/api/file?path=${encodeURIComponent(path)}`);
           await upload(path, file, current.version);
         }
         done.push({ ok: true, text: `${file.name} uploaded (${bytes(file.size)}).`, path });
