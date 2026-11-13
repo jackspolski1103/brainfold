@@ -1017,6 +1017,26 @@ class Brain:
         return self._guide(who, target, description, start_here, keep)
 
     @_locked
+    def forget(self, who: str, email: str) -> None:
+        """Take a removed member out of every access list, so the same address invited
+        again starts with nothing. `who` is the administrator who removed them."""
+        for file in sorted(self.root.rglob(".brainfold.toml")):
+            if ".git" in self._parts(file):
+                continue
+            try:
+                meta = self._meta(file.parent)
+                lists = {key: meta[key] for key in ("read", "write") if key in meta}
+                kept = {
+                    key: [grant for grant in value if grant != email]
+                    for key, value in lists.items()
+                }
+                if kept != lists:
+                    guide = meta.get("description", ""), meta.get("start_here", [])
+                    self._guide(who, file.parent, *guide, kept)
+            except (BrainfoldError, TypeError):
+                continue  # metadata written by hand that is not valid already denies
+
+    @_locked
     def ensure_home(self, who: str) -> None:
         """Create the caller's personal folder on first use. Only the server does this."""
         alias = self.alias(who)
