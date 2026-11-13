@@ -2,7 +2,7 @@ import { ChevronRight, Download, File as FileIcon, FileText, Folder, FolderOpen,
 import { type DragEvent, type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AccessDialog, Grants, isPersonal, useDirectory } from "./Access";
 import { ApiError, type Entry, type FileView, type Hit, type Listing, api, baseName, bytes, fileUrl, message, parent, tree, upload } from "./api";
-import { Badge, Button, Code, Empty, Markdown, Notice, SearchInput, Section, Segmented, Table, Td, Tr, button, cx } from "./ui";
+import { Badge, Button, Code, Dialog, Empty, Field, Input, Markdown, Notice, SearchInput, Section, Segmented, Table, Td, Tr, button, cx } from "./ui";
 
 const isFile = (path: string) => /\.[a-z0-9]+$/i.test(path);
 const link = (path: string, kind?: string) => `#/${(kind ? kind === "file" : isFile(path)) ? "file" : "brain"}${path}`;
@@ -133,7 +133,40 @@ function FileCard({ file }: { file: FileView }) {
 
 const LIMIT = 25 * 1024 * 1024; // the server's limit for one file
 
-type Note = { ok: boolean; text: string };
+type Note = { ok: boolean; text: string; path?: string };
+
+function DescribeDialog({ path, current, onClose, onSaved }: { path: string | null; current: string; onClose: () => void; onSaved: () => void }) {
+  const [text, setText] = useState(current);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    setText(current);
+    setError("");
+  }, [path, current]);
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    try {
+      await api("PUT", "/api/describe", { path, description: text });
+      onSaved();
+      onClose();
+    } catch (failure) {
+      setError(message(failure));
+    }
+  }
+  return (
+    <Dialog open={path !== null} onClose={onClose} title="Describe this file" description={<code className="font-mono text-xs">{path}</code>}>
+      <form onSubmit={save} className="space-y-4">
+        <Field label="What is it?" hint="One line. Agents and people see it next to the file, before opening it. Leave it empty to remove it.">
+          <Input autoFocus maxLength={300} placeholder="Employee handbook, 2026 edition." value={text} onChange={(event) => setText(event.target.value)} />
+        </Field>
+        {error && <Notice>{error}</Notice>}
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>Not now</Button>
+          <Button type="submit" variant="primary">Save description</Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
 
 function FolderView({ listing, admin, onEdit, onChanged }: { listing: Listing; admin: boolean; onEdit: () => void; onChanged: () => void }) {
   const root = listing.path === "/";
@@ -141,6 +174,7 @@ function FolderView({ listing, admin, onEdit, onChanged }: { listing: Listing; a
   const [busy, setBusy] = useState("");
   const [notes, setNotes] = useState<Note[]>([]);
   const [over, setOver] = useState(false);
+  const [describing, setDescribing] = useState<string | null>(null);
 
   async function send(files: File[]) {
     const done: Note[] = [];
@@ -161,7 +195,7 @@ function FolderView({ listing, admin, onEdit, onChanged }: { listing: Listing; a
           const current = await api<FileView>("GET", `/api/file?path=${encodeURIComponent(path)}`);
           await upload(path, file, current.version);
         }
-        done.push({ ok: true, text: `${file.name} uploaded (${bytes(file.size)}).` });
+        done.push({ ok: true, text: `${file.name} uploaded (${bytes(file.size)}).`, path });
       } catch (failure) {
         done.push({ ok: false, text: `${file.name}: ${message(failure)}` });
       }
@@ -170,6 +204,10 @@ function FolderView({ listing, admin, onEdit, onChanged }: { listing: Listing; a
     setNotes(done);
     if (picker.current) picker.current.value = "";
     onChanged();
+    // One new file: ask what it is right away. Several: each note offers it.
+    const stored = done.filter((note) => note.path);
+    const known = listing.entries.find((entry) => entry.path === stored[0]?.path)?.description;
+    if (stored.length === 1 && !known) setDescribing(stored[0].path ?? null);
   }
   const drop = (event: DragEvent) => {
     if (!listing.can_write || !event.dataTransfer.types.includes("Files")) return;
@@ -232,7 +270,10 @@ function FolderView({ listing, admin, onEdit, onChanged }: { listing: Listing; a
         </div>
       )}
       {notes.map((note) => (
-        <Notice key={note.text} tone={note.ok ? "success" : "danger"}>{note.text}</Notice>
+        <Notice key={note.text} tone={note.ok ? "success" : "danger"}>
+          {note.text}{" "}
+          {note.path && <button type="button" onClick={() => setDescribing(note.path ?? null)} className="cursor-pointer underline">Describe it</button>}
+        </Notice>
       ))}
       {listing.entries.length === 0 ? (
         <Empty icon={FolderOpen} title="This folder is empty">Agents create files and folders here through the brain's tools, wherever their person can write.</Empty>
@@ -257,7 +298,12 @@ function FolderView({ listing, admin, onEdit, onChanged }: { listing: Listing; a
                   )}
                 </Td>
               )}
-              <Td className="w-px text-right">
+              <Td className="w-px text-right whitespace-nowrap">
+                {entry.size != null && listing.can_write && (
+                  <Button size="icon" variant="ghost" aria-label={`Describe ${baseName(entry.path)}`} title="Describe" onClick={(event) => { event.stopPropagation(); setDescribing(entry.path); }}>
+                    <Pencil size={14} aria-hidden />
+                  </Button>
+                )}
                 {entry.size != null && (
                   <a href={fileUrl(entry.path)} download aria-label={`Download ${baseName(entry.path)}`} title="Download" onClick={(event) => event.stopPropagation()} className={button("ghost", "icon")}>
                     <Download size={14} aria-hidden />
@@ -269,6 +315,7 @@ function FolderView({ listing, admin, onEdit, onChanged }: { listing: Listing; a
         </Table>
       )}
       {listing.truncated && <p className="text-xs text-faint">Showing the first 256 entries.</p>}
+      <DescribeDialog path={describing} current={listing.entries.find((entry) => entry.path === describing)?.description ?? ""} onClose={() => setDescribing(null)} onSaved={onChanged} />
     </div>
   );
 }

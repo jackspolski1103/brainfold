@@ -482,6 +482,10 @@ def test_files_carry_a_description_that_follows_them(brain: Brain) -> None:
     brain.delete(ALICE, f"{folder}/third.md", stored["version"])
     brain.write(ALICE, f"{folder}/third.md", "other")
     assert "description" not in entry(brain, ALICE, f"{folder}/third.md")
+    # Empty text removes it.
+    brain.describe_file(ALICE, f"{folder}/process.md", "How the team works.")
+    brain.describe_file(ALICE, f"{folder}/process.md", "")
+    assert "description" not in entry(brain, ALICE, f"{folder}/process.md")
     # Denials: no write, a folder, several lines.
     assert code(brain.describe_file, BOB, f"{folder}/process.md", "x") == "unavailable"
     assert code(brain.describe_file, ALICE, folder, "x") == "unavailable"

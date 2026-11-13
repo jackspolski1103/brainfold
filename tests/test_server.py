@@ -501,5 +501,12 @@ def test_a_person_downloads_and_uploads_files_in_the_panel_with_their_session(ap
     token = alice.post("/api/tokens", json={"name": "t"}).json()["token"]
     bearer = {"Authorization": f"Bearer {token}"}
     assert TestClient(app).get("/api/files", params=target, headers=bearer).status_code == 401
+    # A person says what the file is; it shows in the listing for whoever can read it.
+    about = {"path": target["path"], "description": "Salaries by role, 2026."}
+    assert alice.put("/api/describe", json=about).status_code == 200
+    entries = alice.get("/api/tree", params={"path": "/projects/costs"}).json()["entries"]
+    assert {"Salaries by role, 2026."} == {e.get("description") for e in entries} - {None}
+    assert code(bob.put("/api/describe", json=about)) == "unavailable"
+    assert TestClient(app).put("/api/describe", json=about).status_code == 401
     actions = [row["action"] for row in admin.get("/api/activity").json()["activity"]]
     assert "upload" in actions and "download" in actions

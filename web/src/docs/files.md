@@ -33,5 +33,6 @@ Open a folder in **Brain**:
 
 - **Download** any file you can read, from its row or from the file's page.
 - **Upload** files to a folder where you can write, with the button or by dropping them on the folder. Replacing a file asks first, and the previous version stays in the history.
+- **Describe** a file in one line, right after uploading it or later with the pencil in its row. Agents see that line in the folder listing, which is how they know what a PDF or a spreadsheet holds before fetching it.
 
 The panel shows text files, with Markdown rendered. Files of other types are only downloaded: the server always sends them as a file to save, never as a page to open, so a file stored in the brain cannot run inside the panel.

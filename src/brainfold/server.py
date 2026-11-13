@@ -549,6 +549,12 @@ def create_app(
             ),
         )
 
+    def describe(_request: Request, user: User, body: dict) -> dict[str, Any]:
+        path, text = str(body["path"]), body["description"]
+        return act(
+            user.email, "describe_file", path, lambda: brain.describe_file(user.email, path, text)
+        )
+
     def activity(request: Request, _user: User, _body: dict) -> dict[str, Any]:
         return {"activity": accounts.activity(int(request.query_params.get("limit", 200)))}
 
@@ -649,6 +655,7 @@ def create_app(
             Route("/api/search", endpoint(search)),
             Route("/api/skills", endpoint(skills)),
             Route("/api/folder", endpoint(folder, admin=True), methods=["PUT"]),
+            Route("/api/describe", endpoint(describe), methods=["PUT"]),
             Route("/api/activity", endpoint(activity, admin=True)),
         ]
     )
