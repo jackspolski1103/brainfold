@@ -187,8 +187,18 @@ def create_app(
         ctx: Context, path: str, content: str, version: str | None = None
     ) -> dict[str, Any]:
         """Create a file, or replace an existing one by passing the `version` you last read.
-        To change part of a file use edit; to add to the end use append."""
-        return await tool(ctx, "write", path, lambda who: brain.write(who, path, content, version))
+        Missing parent folders are created. To change part of a file use edit; to add to
+        the end use append. Writing <folder>/SKILL.md with `name` and `description` front
+        matter publishes a skill; the answer carries the `skill` name use_skill takes."""
+
+        def work(who: str) -> dict[str, Any]:
+            result = brain.write(who, path, content, version)
+            for name, skill in skills_for(who).items():
+                if skill.get("path") == result["path"]:
+                    result["skill"] = name
+            return result
+
+        return await tool(ctx, "write", path, work)
 
     @server.tool()
     async def edit(ctx: Context, path: str, old: str, new: str) -> dict[str, Any]:
@@ -281,9 +291,19 @@ def create_app(
         skills listed below, call this first and follow the procedure it returns."""
 
         def load(who: str) -> dict[str, Any]:
-            skill = skills_for(who).get(name)
+            skills = skills_for(who)
+            # Agents often pass the name written in the SKILL.md, or its folder's name.
+            same = [
+                key
+                for key, found in skills.items()
+                if name in (found["name"], key.rpartition("-")[0])
+            ]
+            skill = skills.get(name) or (skills[same[0]] if len(same) == 1 else None)
             if skill is None:
-                raise BrainfoldError("unavailable", "The skill is not available.")
+                raise BrainfoldError(
+                    "unavailable",
+                    f"The skill is not available. Your skills: {', '.join(skills)}.",
+                )
             if "content" in skill:
                 return {"name": name, "content": skill["content"]}
             return {"name": name, **brain.read(who, skill["path"])}

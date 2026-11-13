@@ -742,7 +742,7 @@ class Brain:
                 raise BrainfoldError("forbidden", "Only an administrator can delete this folder.")
             (target / ".DS_Store").unlink(missing_ok=True)
             if any(entry.name != ".brainfold.toml" for entry in target.iterdir()):
-                raise BrainfoldError("folder_not_empty", "Delete or move its files first.")
+                raise BrainfoldError("folder_not_empty", "Delete or move what is inside it first.")
             self._movable(target)  # personal folders themselves stay
             meta.unlink(missing_ok=True)
             target.rmdir()
@@ -940,6 +940,9 @@ class Brain:
     def ensure_home(self, who: str) -> None:
         """Create the caller's personal folder on first use. Only the server does this."""
         alias = self.alias(who)
+        if alias and not (self.root / PEOPLE / ".brainfold.toml").is_file():
+            about = "Personal folders, created by the server; each person sees only their own."
+            self._guide("brainfold", self.root / PEOPLE, about, [], {})
         if alias and not (self.root / PEOPLE / alias).is_dir():
             self._guide("brainfold", self.root / PEOPLE / alias, f"Private notes of {who}.", [], {})
 

@@ -255,7 +255,7 @@ export function AccessPage() {
                     ) : (
                       <>
                         <Td><Grants value={row.read} inherited={nearest(row, "read")} /></Td>
-                        <Td><Grants value={row.write} inherited={nearest(row, "write")} /></Td>
+                        <Td>{row.path === "/people" ? <Badge title="Personal folders are created by the server.">Server only</Badge> : <Grants value={row.write} inherited={nearest(row, "write")} />}</Td>
                       </>
                     )}
                     <Td className="w-px text-right">

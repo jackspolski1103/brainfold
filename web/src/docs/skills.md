@@ -18,7 +18,7 @@ Skills live in the brain like any other file, so they follow permissions: your a
 
 ### How an agent finds them
 
-When a harness connects, Brainfold sends the list of skills available to that person. When a task matches one, the agent calls `use_skill` with its name and follows the procedure. Nobody has to install anything: a skill published by one person is used by a teammate's agent in its next session.
+When a harness connects, Brainfold sends the list of skills available to that person. When a task matches one, the agent calls `use_skill` with its name and follows the procedure. The listed name is the folder's name plus a short suffix that keeps it unique; `use_skill` also accepts the plain name when only one skill has it. Nobody has to install anything: a skill published by one person is used by a teammate's agent in its next session.
 
 The **Skills** section of this panel shows the list your agent receives.
 

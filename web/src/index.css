@@ -121,6 +121,12 @@ dialog::backdrop {
 .prose li {
   @apply my-1;
 }
+.prose li:has(> input[type="checkbox"]) {
+  @apply -ml-5 list-none;
+}
+.prose li > input[type="checkbox"] {
+  @apply mr-2 align-middle accent-(--accent);
+}
 .prose a {
   @apply text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent;
 }

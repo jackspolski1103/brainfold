@@ -229,12 +229,25 @@ async def test_each_identity_is_told_only_the_skills_it_can_read(team: Any) -> N
                 "Ask for the summary first"
                 in (await call(alice, "use_skill", name=name))[1]["content"]
             )
+            # Regression: an agent that just wrote a skill calls it by its plain name.
+            plain = await call(alice, "use_skill", name="analyze-costs")
+            assert not plain[0] and "Ask for the summary first" in plain[1]["content"]
+            body = "---\nname: close-month\ndescription: Close the month.\n---\n1. Sum."
+            written = await call(
+                alice, "write", path="/projects/costs/close-month/SKILL.md", content=body
+            )
+            assert written[1]["skill"].startswith("close-month-")
+            assert not (await call(alice, "use_skill", name="close-month"))[0]
+            missing = await call(alice, "use_skill", name="nothing")
+            assert missing[0] and written[1]["skill"] in missing[1]
             proposal = (await call(alice, "use_skill", name="propose-skills"))[1]["content"]
             assert all(word in proposal for word in ("untrusted", "Cite", "confirmation"))
         for token in (tokens[BOB], None):
             async with harness(url, token) as other:
                 assert "analyze-costs" not in await described(other)
                 assert "analyze-costs" not in other.instructions
+                refused = await call(other, "use_skill", name="analyze-costs")
+                assert refused[0] and "analyze-costs" not in refused[1].partition("Your skills")[2]
                 assert (await call(other, "use_skill", name=name))[0]
 
 
