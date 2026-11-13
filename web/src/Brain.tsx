@@ -224,7 +224,7 @@ function FolderView({ listing, admin, onEdit, onChanged }: { listing: Listing; a
       <input ref={picker} type="file" multiple hidden aria-label="Files to upload" onChange={(event) => event.target.files?.length && void send([...event.target.files])} />
       <Section
         title={root ? "Brain" : baseName(listing.path)}
-        description={listing.description || <span className="text-faint">{listing.home ? "No shared folder has been granted to you yet. Ask an administrator for access; meanwhile your personal folder works." : "No description yet. Agents see this text first when they enter the folder."}</span>}
+        description={listing.description || <span className="text-faint">{listing.home && !listing.entries.some((entry) => entry.path !== "/people") ? "No shared folder has been granted to you yet. Ask an administrator for access; meanwhile your personal folder works." : "No description yet. Agents see this text first when they enter the folder."}</span>}
         action={<Badge tone={listing.can_write ? "success" : "neutral"}>{listing.can_write ? "You can write here" : "Read only for you"}</Badge>}
       >
         <div className="space-y-3">

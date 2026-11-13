@@ -11,7 +11,7 @@ The first account is an administrator. The last administrator cannot be removed.
 
 ## Inviting
 
-**Members → Invite** creates a one-time link. Brainfold does not send email: pass the link on yourself. The person opens it, chooses a password of at least 10 characters, and is in.
+**Members → Invite** creates a one-time link. Brainfold does not send email: pass the link on yourself. The person opens it, chooses a password of at least 10 characters, and is in. The link is shown once: if it gets lost before it is used, **New invite link** on that person's row creates another and cancels the first.
 
 ## Groups
 

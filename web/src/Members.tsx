@@ -131,10 +131,10 @@ export function Members({ self, tab }: { self: string; tab: "users" | "groups" }
       setError(message(failure));
     }
   };
-  const reset = (email: string) =>
+  const reset = (email: string, pending: boolean) =>
     attempt(async () => {
       const result = await api<{ invite: string }>("POST", `/api/users/${encodeURIComponent(email)}/reset`, {});
-      setLink({ url: `${location.origin}/#/accept/${result.invite}`, note: `Send this link to ${email} to choose a new password. It works once; their current password keeps working until they use it.` });
+      setLink({ url: `${location.origin}/#/accept/${result.invite}`, note: pending ? `Send this link to ${email}. It works once and replaces the invitation sent before.` : `Send this link to ${email} to choose a new password. It works once; their current password keeps working until they use it.` });
     });
   const needle = filter.trim().toLowerCase();
   const shown = members.filter((member) => `${member.email} ${member.role} ${member.groups.join(" ")}`.toLowerCase().includes(needle));
@@ -184,9 +184,9 @@ export function Members({ self, tab }: { self: string; tab: "users" | "groups" }
                   <Td>{member.pending ? <Badge tone="warning">Invited</Badge> : <Badge tone="success">Active</Badge>}</Td>
                   <Td className="w-px">
                     <span className="flex justify-end gap-1">
-                      {!member.pending && (
-                        <Button size="sm" variant="ghost" onClick={() => void reset(member.email)}><KeyRound size={13} aria-hidden /> Reset password</Button>
-                      )}
+                      <Button size="sm" variant="ghost" onClick={() => void reset(member.email, member.pending)}>
+                        <KeyRound size={13} aria-hidden /> {member.pending ? "New invite link" : "Reset password"}
+                      </Button>
                       {member.email !== self && (
                         <Button
                           size="sm"

@@ -1,7 +1,7 @@
 import { BookOpen, CircleHelp, FolderTree, LayoutGrid, LogOut, type LucideIcon, Menu as MenuIcon, Moon, PanelLeft, Plug, ScrollText, ShieldCheck, Sparkles, Sun, UserPlus, UserRound, Users } from "lucide-react";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import { AccessPage } from "./Access";
-import { ApiError, type State, type User, api } from "./api";
+import { ApiError, SIGNED_OUT, type State, type User, api } from "./api";
 import { Brain } from "./Brain";
 import { Connect } from "./Connect";
 import { Docs } from "./Docs";
@@ -132,6 +132,7 @@ function Entrance({ state, invite, onDone }: { state: State; invite: string | nu
       <p className="mt-5 flex items-center gap-4 text-sm text-muted">
         <a href="#/docs" className="hover:text-fg">Documentation</a>
         {mode === "login" && <span className="text-faint">Forgot your password? Ask an administrator for a reset link.</span>}
+        {mode === "accept" && <a href="#/" className="hover:text-fg">Already have an account? Sign in</a>}
       </p>
     </main>
   );
@@ -253,6 +254,10 @@ export function App() {
     api<State>("GET", "/api/state").then(setState, () => setFailed(true));
   }, []);
   useEffect(refresh, [refresh]);
+  useEffect(() => {
+    addEventListener(SIGNED_OUT, refresh);
+    return () => removeEventListener(SIGNED_OUT, refresh);
+  }, [refresh]);
 
   if (route === "/docs" || route.startsWith("/docs/")) {
     return (

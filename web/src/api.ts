@@ -44,6 +44,8 @@ export type Skill = { name: string; description: string; path: string | null };
 export type Hit = { path: string; line: number; text: string };
 export type Health = { git: boolean; database: boolean; unversioned_writes: number; mirror: string };
 
+export const SIGNED_OUT = "brainfold:signed-out";
+
 export class ApiError extends Error {
   constructor(
     public code: string,
@@ -65,6 +67,8 @@ export async function api<T>(method: string, path: string, body?: unknown): Prom
 
 async function answer<T>(response: Response): Promise<T> {
   const data = await response.json().catch(() => ({}));
+  // The session ended elsewhere (removed, signed out, expired): the app shows the sign-in.
+  if (data?.error?.code === "unauthenticated") dispatchEvent(new Event(SIGNED_OUT));
   if (!response.ok) {
     const error = data?.error ?? { code: "request_failed", message: `The server answered ${response.status}.` };
     throw new ApiError(error.code, error.message);
