@@ -186,7 +186,8 @@ async def test_a_harness_works_with_a_personal_token_until_it_is_revoked(team: A
             failed, written = await call(alice, "write", path=f"{root['home']}/n.md", content="x")
             assert not failed and written["versioned"]
             failed, text = await call(alice, "write", path=f"{root['home']}/n.md", content="y")
-            assert failed and "already_exists" not in text and written["version"] in text
+            # The code travels in the text, the only part of a failure an agent receives.
+            assert failed and "already_exists: " in text and written["version"] in text
             assert not (await call(alice, "edit", path=f"{root['home']}/n.md", old="x", new="z"))[0]
             assert not (
                 await call(alice, "create_folder", path="/projects/costs/r", description="R")
@@ -197,11 +198,11 @@ async def test_a_harness_works_with_a_personal_token_until_it_is_revoked(team: A
             failed, learned = await call(alice, "list_learnings")
             assert learned["learnings"][0]["author"] == ALICE
         async with harness(url, tokens[BOB]) as bob:
-            assert (await call(bob, "read", path=f"{root['home']}/n.md"))[0]
+            assert "unavailable: " in (await call(bob, "read", path=f"{root['home']}/n.md"))[1]
             assert (await call(bob, "list_learnings"))[1]["learnings"] == []
         async with harness(url, None) as nobody:
             failed, text = await call(nobody, "list")
-            assert failed and "Authentication" in text
+            assert failed and "unauthenticated: Authentication" in text
         identifier = accounts.tokens(ALICE)[0]["id"]
         accounts.revoke(ALICE, identifier)
         async with harness(url, tokens[ALICE]) as revoked:

@@ -162,7 +162,11 @@ def create_app(
             brain.ensure_home(actor)
             return act(actor, action, path, lambda: call(actor))
 
-        return await anyio.to_thread.run_sync(work)
+        try:
+            return await anyio.to_thread.run_sync(work)
+        except BrainfoldError as error:
+            # The agent only receives the text of a failure, so the code travels in it.
+            raise BrainfoldError(error.code, f"{error.code}: {error.message}") from None
 
     @server.tool(name="list")
     async def list_folder(ctx: Context, path: str = "/", offset: int = 0) -> dict[str, Any]:
