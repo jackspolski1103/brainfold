@@ -152,11 +152,14 @@ def test_panel_and_harness_uploads_of_the_same_file_at_once_one_wins(
     body = {person.email: bytes([number]) * 200_000 for number, person in enumerate(crowd)}
 
     def send(person: Person, number: int, version: str | None = None) -> tuple[int, bytes]:
+        # The second round sends new bytes: storing again exactly what is there succeeds
+        # and leaves the version as it was, so a second replacement would be right too.
+        data = body[person.email] + (b"again" if version else b"")
         if number % 2:
-            return person.upload(path, body[person.email], version).status_code, body[person.email]
+            return person.upload(path, data, version).status_code, data
         headers = {"If-Match": f'"{version}"'} if version else {}
-        response = person.agent.put(f"/files{path}", content=body[person.email], headers=headers)
-        return response.status_code, body[person.email]
+        response = person.agent.put(f"/files{path}", content=data, headers=headers)
+        return response.status_code, data
 
     answers = together(
         *(lambda p=person, n=number: send(p, n) for number, person in enumerate(crowd))
