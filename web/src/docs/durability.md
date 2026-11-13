@@ -12,18 +12,47 @@ The brain folder and the accounts database must live on a volume that survives r
 
 ## 3. An off-site mirror
 
-Set `BRAINFOLD_MIRROR` to a git remote, typically a private repository, and give the server a deploy key with write access in `BRAINFOLD_MIRROR_KEY`. After every change the server pushes the history there in the background. It never force-pushes.
+The server can push every change to a git repository somewhere else. Any git server reachable over SSH works: GitHub, GitLab, Bitbucket or your own.
+
+### Set it up
+
+1. Create a **private, empty** repository, for example `your-org/brain-backup`. It must start empty: the server never force-pushes over existing history.
+2. Generate a key used only for this, with no passphrase:
 
 ```bash
-BRAINFOLD_MIRROR=git@github.com:your-org/your-brain.git
-BRAINFOLD_MIRROR_KEY=<private key, PEM or base64>
+ssh-keygen -t ed25519 -N "" -f brainfold-mirror -C "brainfold mirror"
 ```
 
-The **Overview** page and `/api/health` show the mirror state: `ok`, `pending`, `failing` or `off`.
+3. Add the public half, `brainfold-mirror.pub`, to that repository as a **deploy key with write access**. A deploy key opens that one repository and nothing else in your organization.
+4. Give the server the repository address and the private half, as environment variables. The key can be pasted as it is or encoded in base64:
+
+```bash
+BRAINFOLD_MIRROR=git@github.com:your-org/brain-backup.git
+BRAINFOLD_MIRROR_KEY=<contents of the brainfold-mirror file>
+```
+
+5. Restart the server and check the mirror state on the **Overview** page or in `/api/health`.
+
+The mirror is configured by whoever deploys the server. It cannot be changed from this panel.
+
+### How it behaves
+
+After every change the server pushes the history to the `main` branch in the background.
+
+| State | Meaning |
+| --- | --- |
+| `ok` | The mirror has every change. |
+| `pending` | A push is on its way. |
+| `failing` | The last push failed. The brain keeps working and the server tries again on the next change. Check the key and the address. |
+| `off` | No mirror is configured. |
+
+### Who can read the mirror
+
+The mirror holds the **whole brain, without permissions applied**: every folder, including the restricted ones. Anyone who can read that repository reads everything. Give access to it only to the people who operate the server.
 
 ### Restoring from the mirror
 
-Start the server with an **empty** brain folder and the mirror configured: it clones the mirror before serving. Nothing is restored over a folder that already has content.
+Start the server with an **empty** brain folder and the same two variables: it clones the mirror before serving. Nothing is restored over a folder that already has content.
 
 ## What the mirror does not cover
 
