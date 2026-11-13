@@ -28,19 +28,18 @@ export function Button({
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: keyof typeof BUTTON; size?: keyof typeof SIZE }) {
   return (
-    <button
-      type="button"
-      {...props}
-      className={cx(
-        "inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md border text-sm whitespace-nowrap transition-colors",
-        "active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50",
-        BUTTON[variant],
-        SIZE[size],
-        className,
-      )}
-    />
+    <button type="button" {...props} className={cx(button(variant, size), className)} />
   );
 }
+
+/** The look of a button, for links that act like one (a download). */
+export const button = (variant: keyof typeof BUTTON = "outline", size: keyof typeof SIZE = "md") =>
+  cx(
+    "inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md border text-sm whitespace-nowrap transition-colors",
+    "active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50",
+    BUTTON[variant],
+    SIZE[size],
+  );
 
 const CONTROL =
   "h-9 w-full rounded-md border border-line bg-transparent px-3 text-sm outline-none placeholder:text-faint focus:border-accent/60 focus:ring-2 focus:ring-accent/15";

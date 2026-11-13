@@ -60,12 +60,25 @@ export async function api<T>(method: string, path: string, body?: unknown): Prom
     headers: body === undefined ? {} : { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+  return answer<T>(response);
+}
+
+async function answer<T>(response: Response): Promise<T> {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = data?.error ?? { code: "request_failed", message: `The server answered ${response.status}.` };
     throw new ApiError(error.code, error.message);
   }
   return data as T;
+}
+
+/** Where the browser fetches a file of any type; the server always answers "save to disk". */
+export const fileUrl = (path: string) => `/api/files?path=${encodeURIComponent(path)}`;
+
+/** Store a file of any type. Replacing one needs the version it has now. */
+export async function upload(path: string, file: File, version?: string): Promise<void> {
+  const headers = { "Content-Type": "application/octet-stream", ...(version ? { "If-Match": `"${version}"` } : {}) };
+  await answer(await fetch(fileUrl(path), { method: "PUT", credentials: "same-origin", headers, body: file }));
 }
 
 export const when = (seconds: number | null) =>

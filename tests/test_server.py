@@ -296,7 +296,7 @@ async def test_files_travel_over_http_with_a_token_and_never_with_the_panel_cook
             assert (await http.put(target, content=b"x", headers=alice)).status_code == 409
             fetched = await http.get(target, headers=alice)
             assert fetched.content == sheet and fetched.headers["etag"] == f'"{stored["version"]}"'
-            assert fetched.headers["content-disposition"] == "attachment"
+            assert fetched.headers["content-disposition"].startswith("attachment")
             assert fetched.headers["x-content-type-options"] == "nosniff"
             assert fetched.headers["content-type"] == "application/octet-stream"
             replaced = await http.put(
@@ -462,3 +462,41 @@ def test_panel_search_and_skills_follow_the_permissions_of_the_person(app: Any) 
     assert hits and not bob.get("/api/search", params={"q": "the"}).json().get("hits")
     assert code(alice.get("/api/search")) == "empty_query"
     assert TestClient(app).get("/api/search", params={"q": "the"}).status_code == 401
+
+
+def test_a_person_downloads_and_uploads_files_in_the_panel_with_their_session(app: Any) -> None:
+    admin = TestClient(app)
+    admin.post("/api/setup", json={"email": ADMIN, "password": PASSWORD})
+    alice, bob = join(app, admin, ALICE), join(app, admin, BOB)
+    admin.put("/api/groups/costs", json={"members": [ALICE]})
+    binary = {"Content-Type": "application/octet-stream"}
+    target = {"path": "/projects/costs/salaries.xlsx"}
+    data = bytes(range(256)) * 40
+    stored = alice.put("/api/files", params=target, content=data, headers=binary)
+    assert stored.status_code == 200 and stored.json()["versioned"]
+    fetched = alice.get("/api/files", params=target)
+    assert fetched.content == data
+    # Saved to disk, never shown in the panel's origin.
+    assert fetched.headers["content-disposition"] == "attachment; filename*=UTF-8''salaries.xlsx"
+    assert fetched.headers["x-content-type-options"] == "nosniff"
+    assert fetched.headers["content-type"] == "application/octet-stream"
+    # Replacing needs the version, like everywhere else.
+    again = alice.put("/api/files", params=target, content=b"new", headers=binary)
+    assert code(again) == "already_exists"
+    match = binary | {"If-Match": f'"{stored.json()["version"]}"'}
+    assert alice.put("/api/files", params=target, content=b"new", headers=match).status_code == 200
+    # A form on another site can only send simple content types: refused before anything runs.
+    form = {"Content-Type": "text/plain"}
+    assert code(alice.put("/api/files", params=target, content=b"x", headers=form)) == (
+        "invalid_request"
+    )
+    # Permissions are the person's: no read, no write, no session, and no harness token.
+    assert code(bob.get("/api/files", params=target)) == "unavailable"
+    assert code(bob.put("/api/files", params=target, content=b"x", headers=binary)) == "unavailable"
+    assert code(admin.get("/api/files", params=target)) == "unavailable"  # manages, does not read
+    assert TestClient(app).get("/api/files", params=target).status_code == 401
+    token = alice.post("/api/tokens", json={"name": "t"}).json()["token"]
+    bearer = {"Authorization": f"Bearer {token}"}
+    assert TestClient(app).get("/api/files", params=target, headers=bearer).status_code == 401
+    actions = [row["action"] for row in admin.get("/api/activity").json()["activity"]]
+    assert "upload" in actions and "download" in actions

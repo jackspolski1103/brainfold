@@ -6,6 +6,6 @@ Date: 2026-11-13. Status: accepted by the author, who reviewed the first panel o
 - **Sections:** Overview, Brain (folder tree, search, rendered Markdown), Skills, Connect a harness (tokens and setup for Claude Code, Codex, Cursor, other MCP clients and the file command), Access (every folder with its rules and an editor), Members (users and groups), Activity, and Account.
 - **Documentation:** pages are Markdown in `web/src/docs/`, built into the panel and served at `#/docs` without signing in. A separate documentation host was the alternative; one build and one address is simpler while the project has one server.
 - **Server:** two read-only routes were added for the panel, `/api/search` and `/api/skills`. Both answer with the permissions of the signed-in person.
-- **Unchanged:** the panel still does not edit file content or download files (scope, decision 0008).
+- **Unchanged:** the panel still does not edit file content (scope, decision 0008). It did not transfer files either until decision [0014](0014-files-in-the-panel.md).
 - **Markdown is untrusted:** brain files are rendered with raw HTML shown as text, images never loaded, and links limited to web, mail and brain addresses.
 - **Not verified:** the Codex and Cursor setup shown in the panel follows their documentation and has not been run against a live server.

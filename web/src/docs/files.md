@@ -1,6 +1,6 @@
 # Files of any type
 
-Text files travel over MCP. Everything else (a PDF manual, a spreadsheet, an image) travels through the `brainfold` command, with the same token and the same permissions.
+Text files travel over MCP. Everything else (a PDF manual, a spreadsheet, an image) is uploaded and downloaded by people in this panel, and by agents through the `brainfold` command with the same token and the same permissions.
 
 ## Upload and download
 
@@ -29,4 +29,9 @@ When an agent reads a file that is not text, it does not receive the bytes. It r
 
 ## In this panel
 
-The panel shows text files, with Markdown rendered. It never downloads other files; it shows the command to fetch them.
+Open a folder in **Brain**:
+
+- **Download** any file you can read, from its row or from the file's page.
+- **Upload** files to a folder where you can write, with the button or by dropping them on the folder. Replacing a file asks first, and the previous version stays in the history.
+
+The panel shows text files, with Markdown rendered. Files of other types are only downloaded: the server always sends them as a file to save, never as a page to open, so a file stored in the brain cannot run inside the panel.

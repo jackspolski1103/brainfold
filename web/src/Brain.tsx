@@ -1,8 +1,8 @@
-import { ChevronRight, File as FileIcon, FileText, Folder, FolderOpen, FolderTree, Home, Pencil, Sparkles } from "lucide-react";
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { ChevronRight, Download, File as FileIcon, FileText, Folder, FolderOpen, FolderTree, Home, Pencil, Sparkles, Upload } from "lucide-react";
+import { type DragEvent, type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AccessDialog, Grants, isPersonal, useDirectory } from "./Access";
-import { ApiError, type Entry, type FileView, type Hit, type Listing, api, baseName, bytes, parent, tree } from "./api";
-import { Badge, Button, Code, Empty, Markdown, Notice, SearchInput, Section, Segmented, Table, Td, Tr, cx } from "./ui";
+import { ApiError, type Entry, type FileView, type Hit, type Listing, api, baseName, bytes, fileUrl, message, parent, tree, upload } from "./api";
+import { Badge, Button, Code, Empty, Markdown, Notice, SearchInput, Section, Segmented, Table, Td, Tr, button, cx } from "./ui";
 
 const isFile = (path: string) => /\.[a-z0-9]+$/i.test(path);
 const link = (path: string, kind?: string) => `#/${(kind ? kind === "file" : isFile(path)) ? "file" : "brain"}${path}`;
@@ -106,11 +106,16 @@ function FileCard({ file }: { file: FileView }) {
     <Section
       title={baseName(file.path)}
       description={<span className="font-mono text-xs text-faint">{bytes(file.size)} · version {file.version.slice(0, 12)}</span>}
-      action={markdown && <Segmented label="View" value={view} onChange={setView} options={[{ id: "rendered", label: "Rendered" }, { id: "source", label: "Source" }]} />}
+      action={
+        <span className="flex flex-wrap items-center gap-2">
+          {markdown && <Segmented label="View" value={view} onChange={setView} options={[{ id: "rendered", label: "Rendered" }, { id: "source", label: "Source" }]} />}
+          <a href={fileUrl(file.path)} download className={button("primary")}><Download size={15} aria-hidden /> Download</a>
+        </span>
+      }
     >
       {file.kind !== "text" ? (
         <div className="space-y-3">
-          <p className="text-muted">This file is not text. The panel never downloads files; fetch it from a terminal with your token:</p>
+          <p className="text-muted">This file is not text, so the panel does not show it. Download it, or let an agent fetch it from a terminal:</p>
           <Code title="Terminal" text={file.fetch ?? ""} />
         </div>
       ) : markdown && view === "rendered" ? (
@@ -126,10 +131,59 @@ function FileCard({ file }: { file: FileView }) {
   );
 }
 
-function FolderView({ listing, admin, onEdit }: { listing: Listing; admin: boolean; onEdit: () => void }) {
+const LIMIT = 25 * 1024 * 1024; // the server's limit for one file
+
+type Note = { ok: boolean; text: string };
+
+function FolderView({ listing, admin, onEdit, onChanged }: { listing: Listing; admin: boolean; onEdit: () => void; onChanged: () => void }) {
   const root = listing.path === "/";
+  const picker = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState("");
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [over, setOver] = useState(false);
+
+  async function send(files: File[]) {
+    const done: Note[] = [];
+    for (const [index, file] of files.entries()) {
+      setBusy(`Uploading ${file.name} (${index + 1} of ${files.length})…`);
+      const path = `${root ? "" : listing.path}/${file.name}`;
+      try {
+        if (file.size > LIMIT) throw new ApiError("file_too_large", "The file is over the 25 MB limit.");
+        try {
+          await upload(path, file);
+        } catch (failure) {
+          const exists = failure instanceof ApiError && failure.code === "already_exists";
+          if (!exists) throw failure;
+          if (!confirm(`${file.name} already exists in this folder. Replace it? The current version stays in the history.`)) {
+            done.push({ ok: false, text: `${file.name}: kept the existing file.` });
+            continue;
+          }
+          const current = await api<FileView>("GET", `/api/file?path=${encodeURIComponent(path)}`);
+          await upload(path, file, current.version);
+        }
+        done.push({ ok: true, text: `${file.name} uploaded (${bytes(file.size)}).` });
+      } catch (failure) {
+        done.push({ ok: false, text: `${file.name}: ${message(failure)}` });
+      }
+    }
+    setBusy("");
+    setNotes(done);
+    if (picker.current) picker.current.value = "";
+    onChanged();
+  }
+  const drop = (event: DragEvent) => {
+    if (!listing.can_write || !event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    setOver(event.type === "dragover");
+    if (event.type === "drop") void send([...event.dataTransfer.files]);
+  };
+  const uploadButton = listing.can_write && (
+    <Button variant="primary" disabled={!!busy} onClick={() => picker.current?.click()}><Upload size={15} aria-hidden /> Upload files</Button>
+  );
+
   return (
-    <>
+    <div onDragOver={drop} onDragLeave={drop} onDrop={drop} className={cx("space-y-4 rounded-lg", over && "outline-2 outline-offset-4 outline-accent outline-dashed")}>
+      <input ref={picker} type="file" multiple hidden aria-label="Files to upload" onChange={(event) => event.target.files?.length && void send([...event.target.files])} />
       <Section
         title={root ? "Brain" : baseName(listing.path)}
         description={listing.description || <span className="text-faint">{listing.home ? "No shared folder has been granted to you yet. Ask an administrator for access; meanwhile your personal folder works." : "No description yet. Agents see this text first when they enter the folder."}</span>}
@@ -171,10 +225,19 @@ function FolderView({ listing, admin, onEdit }: { listing: Listing; admin: boole
           )}
         </div>
       </Section>
+      {listing.can_write && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-faint" role="status">{busy || "Drop files anywhere on this folder to add them, up to 25 MB each."}</p>
+          {uploadButton}
+        </div>
+      )}
+      {notes.map((note) => (
+        <Notice key={note.text} tone={note.ok ? "success" : "danger"}>{note.text}</Notice>
+      ))}
       {listing.entries.length === 0 ? (
         <Empty icon={FolderOpen} title="This folder is empty">Agents create files and folders here through the brain's tools, wherever their person can write.</Empty>
       ) : (
-        <Table head={["Name", "About", "Size", ...(admin ? ["Declared access"] : [])]}>
+        <Table head={["Name", "About", "Size", ...(admin ? ["Declared access"] : []), ""]}>
           {listing.entries.map((entry) => (
             <Tr key={entry.path} onClick={() => (location.hash = link(entry.path, entry.kind === "file" ? "file" : "folder"))}>
               <Td>
@@ -194,12 +257,19 @@ function FolderView({ listing, admin, onEdit }: { listing: Listing; admin: boole
                   )}
                 </Td>
               )}
+              <Td className="w-px text-right">
+                {entry.size != null && (
+                  <a href={fileUrl(entry.path)} download aria-label={`Download ${baseName(entry.path)}`} title="Download" onClick={(event) => event.stopPropagation()} className={button("ghost", "icon")}>
+                    <Download size={14} aria-hidden />
+                  </a>
+                )}
+              </Td>
             </Tr>
           ))}
         </Table>
       )}
       {listing.truncated && <p className="text-xs text-faint">Showing the first 256 entries.</p>}
-    </>
+    </div>
   );
 }
 
@@ -209,6 +279,7 @@ export function Brain({ admin, kind, path }: { admin: boolean; kind: "folder" | 
   const [file, setFile] = useState<FileView | null>(null);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(false);
+  const [shown, setShown] = useState(0); // bumped after an upload so the tree reads again
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<{ query: string; hits: Hit[]; truncated: boolean } | null>(null);
   const suggestions = useDirectory(admin);
@@ -246,7 +317,7 @@ export function Brain({ admin, kind, path }: { admin: boolean; kind: "folder" | 
       </header>
       <div className="flex items-start gap-6">
         <aside className="sticky top-0 hidden max-h-[calc(100vh-7rem)] w-72 shrink-0 overflow-y-auto lg:block">
-          <Tree key={String(admin)} current={kind === "file" ? current : current} />
+          <Tree key={shown} current={current} />
         </aside>
         <div className="min-w-0 flex-1 space-y-4">
           {hits ? (
@@ -273,7 +344,7 @@ export function Brain({ admin, kind, path }: { admin: boolean; kind: "folder" | 
             <>
               <Crumbs path={current} />
               {error && <Notice>{error} <a href={`#/brain${parent(current)}`} className="underline">Go up</a></Notice>}
-              {listing && <FolderView listing={listing} admin={admin} onEdit={() => setEditing(true)} />}
+              {listing && <FolderView key={listing.path} listing={listing} admin={admin} onEdit={() => setEditing(true)} onChanged={() => { void tree(current).then(setListing); setShown((count) => count + 1); }} />}
               {file && <FileCard file={file} />}
             </>
           )}

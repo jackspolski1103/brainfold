@@ -535,50 +535,66 @@ def create_app(
     def activity(request: Request, _user: User, _body: dict) -> dict[str, Any]:
         return {"activity": accounts.activity(int(request.query_params.get("limit", 200)))}
 
+    async def transfer(request: Request, actor: str, path: str) -> Response:
+        """Send or receive one file of any type for someone already authenticated."""
+        if request.method != "PUT":
+            data, version = await run_in_threadpool(
+                act, actor, "download", path, lambda: brain.download(actor, path)
+            )
+            # Always saved to disk, never shown: a stored page or image cannot run in the
+            # panel's origin with the session of whoever fetched it.
+            name = urllib.parse.quote(path.rsplit("/", 1)[-1])
+            headers = {
+                "ETag": f'"{version}"',
+                "Content-Disposition": f"attachment; filename*=UTF-8''{name}",
+                "X-Content-Type-Options": "nosniff",
+                "Content-Security-Policy": "sandbox",
+            }
+            return Response(data, media_type="application/octet-stream", headers=headers)
+        # The body is received outside the brain lock, into a file the server cleans up.
+        temporary = brain.root / f".upload-{secrets.token_hex(8)}.brainfold-tmp"
+        try:
+            received = 0
+            with temporary.open("wb") as out:
+                async for chunk in request.stream():
+                    received += len(chunk)
+                    if received > brain.max_file_bytes:
+                        raise BrainfoldError("file_too_large", "The file exceeds the upload limit.")
+                    out.write(chunk)
+            version = request.headers.get("if-match", "").strip('"') or None
+            result = await run_in_threadpool(
+                act, actor, "upload", path, lambda: brain.put_file(actor, path, temporary, version)
+            )
+        finally:
+            temporary.unlink(missing_ok=True)
+        return JSONResponse(result)
+
+    def failure(error: BrainfoldError) -> Response:
+        return JSONResponse(
+            {"error": {"code": error.code, "message": error.message}},
+            status_code=STATUS.get(error.code, 400),
+        )
+
     async def files(request: Request) -> Response:
-        """Upload and download files of any type. Bearer only: never the panel cookie, so
-        a file opened in an administrator's browser cannot act with their session."""
-        path = "/" + request.path_params["path"]
+        """Files for a harness and the command line. Bearer only, never the panel cookie."""
         try:
             actor = accounts.authenticate(_bearer(request), "access").email
-            if request.method != "PUT":
-                data, version = await run_in_threadpool(
-                    act, actor, "download", path, lambda: brain.download(actor, path)
-                )
-                headers = {
-                    "ETag": f'"{version}"',
-                    "Content-Disposition": "attachment",
-                    "X-Content-Type-Options": "nosniff",
-                }
-                return Response(data, media_type="application/octet-stream", headers=headers)
-            # The body is received outside the brain lock, into a file the server cleans up.
-            temporary = brain.root / f".upload-{secrets.token_hex(8)}.brainfold-tmp"
-            try:
-                received = 0
-                with temporary.open("wb") as out:
-                    async for chunk in request.stream():
-                        received += len(chunk)
-                        if received > brain.max_file_bytes:
-                            raise BrainfoldError(
-                                "file_too_large", "The file exceeds the upload limit."
-                            )
-                        out.write(chunk)
-                version = request.headers.get("if-match", "").strip('"') or None
-                result = await run_in_threadpool(
-                    act,
-                    actor,
-                    "upload",
-                    path,
-                    lambda: brain.put_file(actor, path, temporary, version),
-                )
-            finally:
-                temporary.unlink(missing_ok=True)
-            return JSONResponse(result)
+            return await transfer(request, actor, "/" + request.path_params["path"])
         except BrainfoldError as error:
-            return JSONResponse(
-                {"error": {"code": error.code, "message": error.message}},
-                status_code=STATUS.get(error.code, 400),
-            )
+            return failure(error)
+
+    async def panel_files(request: Request) -> Response:
+        """Files for a person in the panel, with their session. An upload must declare a
+        binary body: a page on another site cannot send that without a preflight, and the
+        session cookie is SameSite besides."""
+        try:
+            actor = accounts.authenticate(_session(request), "session").email
+            kind = request.headers.get("content-type", "").split(";")[0]
+            if request.method == "PUT" and kind != "application/octet-stream":
+                raise BrainfoldError("invalid_request", "Invalid request.")
+            return await transfer(request, actor, request.query_params.get("path", ""))
+        except BrainfoldError as error:
+            return failure(error)
 
     app = server.streamable_http_app()
     app.state.setup_code = setup_code
@@ -594,6 +610,7 @@ def create_app(
     app.router.routes.extend(
         [
             Route("/files/{path:path}", files, methods=["GET", "PUT"]),
+            Route("/api/files", panel_files, methods=["GET", "PUT"]),
             Route("/api/health", endpoint(health, public=True)),
             Route("/api/state", endpoint(state, public=True)),
             Route("/api/setup", endpoint(setup, public=True), methods=["POST"]),
