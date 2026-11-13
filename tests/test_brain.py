@@ -188,7 +188,9 @@ def test_agents_write_guidance_but_never_access(brain: Brain) -> None:
     assert listing["description"] == "Monthly reports."
     assert listing["start_here"] == ["/projects/costs/reports/latest.md"]
     assert code(brain.create_folder, ALICE, "/projects/costs/reports", "again") == "already_exists"
-    assert code(brain.create_folder, BOB, "/projects/costs/x", "no") == "unavailable"
+    # Bob cannot see /projects/costs: he gets what a missing folder there would answer.
+    assert code(brain.create_folder, BOB, "/projects/costs/x", "no") == "write_denied"
+    assert code(brain.create_folder, BOB, "/projects/absent/x", "no") == "write_denied"
     assert code(brain.create_folder, ALICE, "/common/x", "no") == "write_denied"
     for bad in (["/absolute.md"], ["../up.md"], [".brainfold.toml"], "text"):
         assert code(brain.describe_folder, ALICE, "/projects/costs", "d", bad) == "invalid_metadata"
@@ -455,7 +457,7 @@ def test_files_of_any_type_are_stored_with_the_same_rules(brain: Brain, tmp_path
     assert code(upload, ALICE, "/projects/costs/salaries.xlsx", b"new") == "already_exists"
     assert code(upload, ALICE, "/projects/costs/salaries.xlsx", b"new", "0" * 64) == "conflict"
     upload(ALICE, "/projects/costs/salaries.xlsx", b"new", stored["version"])
-    assert code(upload, BOB, "/projects/costs/x.bin", b"x") == "unavailable"
+    assert code(upload, BOB, "/projects/costs/x.bin", b"x") == "write_denied"  # as if missing
     assert code(upload, ALICE, "/projects/costs/k/SKILL.md", b"not a skill") == "invalid_skill"
     brain.max_file_bytes = 10
     assert code(upload, ALICE, "/projects/costs/big.bin", b"x" * 11) == "file_too_large"
@@ -487,7 +489,7 @@ def test_files_carry_a_description_that_follows_them(brain: Brain) -> None:
     brain.describe_file(ALICE, f"{folder}/process.md", "")
     assert "description" not in entry(brain, ALICE, f"{folder}/process.md")
     # Denials: no write, a folder, several lines.
-    assert code(brain.describe_file, BOB, f"{folder}/process.md", "x") == "unavailable"
+    assert code(brain.describe_file, BOB, f"{folder}/process.md", "x") == "write_denied"
     assert code(brain.describe_file, ALICE, folder, "x") == "unavailable"
     assert code(brain.describe_file, ALICE, f"{folder}/process.md", "a\nb") == "invalid_metadata"
 

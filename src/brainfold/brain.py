@@ -229,7 +229,14 @@ class Brain:
         target = self._real(path)
         read, write = self._access(who, target)
         if not read:
-            raise _unavailable()
+            # A hidden folder answers like a missing one: with what the nearest folder the
+            # caller can see says about a new path there.
+            seen = target.parent
+            while seen != self.root and not (seen.is_dir() and self._access(who, seen)[0]):
+                seen = seen.parent
+            hidden = self._parts(target)[:1] != (PEOPLE,) and target != self.root
+            if not (hidden and self._access(who, seen) == (True, False)):
+                raise _unavailable()
         if not write:
             raise BrainfoldError("write_denied", "You do not have write permission on this path.")
         return target

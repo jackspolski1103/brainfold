@@ -308,9 +308,11 @@ async def test_files_travel_over_http_with_a_token_and_never_with_the_panel_cook
             assert replaced.status_code == 200
             bob = {"Authorization": f"Bearer {tokens[BOB]}"}
             assert (await http.get(target, headers=bob)).status_code == 404
-            assert (
-                await http.put("/files/projects/costs/b.bin", content=b"x", headers=bob)
-            ).status_code == 404
+            # A folder Bob cannot see refuses like a folder that is not there.
+            hidden = await http.put("/files/projects/costs/b.bin", content=b"x", headers=bob)
+            absent = await http.put("/files/projects/absent/b.bin", content=b"x", headers=bob)
+            assert hidden.status_code == absent.status_code == 403
+            assert hidden.json() == absent.json()
             assert (await http.get(target)).status_code == 401
             # A logged-in administrator's cookie does not open these routes.
             await http.post("/api/login", json={"email": ALICE, "password": PASSWORD})
