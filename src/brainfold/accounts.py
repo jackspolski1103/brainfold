@@ -192,7 +192,13 @@ class Accounts:
             admins = [row[0] for row in self._run("SELECT email FROM users WHERE role = 'admin'")]
             if admins == [email]:
                 raise BrainfoldError("last_admin", "The only administrator cannot be removed.")
+            left = [
+                row[0] for row in self._run("SELECT grp FROM memberships WHERE email = ?", email)
+            ]
             self._run("DELETE FROM users WHERE email = ?", email)  # cascades to tokens, groups
+            for name in set(left) - self.groups().keys():
+                # A group emptied this way is gone like one deleted by hand: name retired.
+                self._run("INSERT OR IGNORE INTO retired_groups VALUES (?)", name)
 
     def groups(self) -> dict[str, list[str]]:
         result: dict[str, list[str]] = {}
