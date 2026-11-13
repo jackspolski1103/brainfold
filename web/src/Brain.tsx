@@ -94,6 +94,9 @@ const resolver = (file: string) => (href: string) => {
   return link(`/${parts.join("/")}`);
 };
 
+// The stamp the server puts before each entry appended to a LEARNINGS.md.
+const STAMP = /<!-- brainfold:learning (\S+) (\S+) -->/g;
+
 function FileCard({ file }: { file: FileView }) {
   const markdown = file.kind === "text" && /\.(md|markdown)$/i.test(file.path);
   const [view, setView] = useState<"rendered" | "source">("rendered");
@@ -113,7 +116,7 @@ function FileCard({ file }: { file: FileView }) {
       ) : markdown && view === "rendered" ? (
         <div className="border-t border-line pt-5">
           {front && <pre className="mb-5 overflow-x-auto rounded-md border border-line bg-panel p-3 font-mono text-xs leading-5 text-muted">{front}</pre>}
-          <Markdown text={body} link={resolve} />
+          <Markdown text={body.replace(STAMP, (_, at, who) => `\n\n---\n\n**${who}** · ${new Date(at).toLocaleString()}\n\n`)} link={resolve} />
         </div>
       ) : (
         <pre className="max-h-[70vh] overflow-auto rounded-md border border-line bg-panel p-4 font-mono text-[13px] leading-6 whitespace-pre-wrap break-words">{file.content}</pre>

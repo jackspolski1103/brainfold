@@ -347,7 +347,7 @@ function renderer(link: (href: string) => string) {
   return new Marked({
     gfm: true,
     renderer: {
-      html: ({ text }) => escape(text),
+      html: ({ text }) => (/^\s*<!--[\s\S]*-->\s*$/.test(text) ? "" : escape(text)),
       image: ({ text }) => escape(text),
       heading({ tokens, depth }) {
         const inner = this.parser.parseInline(tokens);
