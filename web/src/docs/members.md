@@ -31,4 +31,4 @@ If the only administrator is locked out, see [recovering access](#/docs/durabili
 
 ## Removing a member
 
-Removing someone revokes their sessions and all of their tokens at once. Their personal folder stays on disk, and its name is never given to another account.
+Removing someone revokes their sessions and all of their tokens at once, and takes them out of every group and every folder's access list. Their personal folder stays on disk, and its name is never given to another account. If the same email is invited again later, it is a new account that starts with nothing.

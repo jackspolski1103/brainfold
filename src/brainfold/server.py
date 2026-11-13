@@ -490,6 +490,7 @@ def create_app(
 
     def remove_user(request: Request, user: User, _body: dict) -> dict[str, Any]:
         accounts.remove_user(request.path_params["email"])
+        brain.forget(user.email, request.path_params["email"])
         accounts.log(user.email, "remove_member", request.path_params["email"], True)
         return {}
 
