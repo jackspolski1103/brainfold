@@ -37,13 +37,13 @@ The mirror is configured by whoever deploys the server. It cannot be changed fro
 
 ### How it behaves
 
-After every change the server pushes the history to the `main` branch in the background.
+After every change the server pushes the history to the `main` branch in the background. Changes made while a push is running go out together in the next one, and anything not yet sent is pushed when the server starts. The server never force-pushes.
 
 | State | Meaning |
 | --- | --- |
 | `ok` | The mirror has every change. |
 | `pending` | A push is on its way. |
-| `failing` | The last push failed. The brain keeps working and the server tries again on the next change. Check the key and the address. |
+| `failing` | The last push failed. The brain keeps working and the server retries on its own: after 30 seconds, then waiting twice as long each time, up to 8 minutes. Git's reason is printed in the server's output; it is usually the key, the address, or a mirror holding history this brain does not have. |
 | `off` | No mirror is configured. |
 
 ### Who can read the mirror

@@ -19,6 +19,7 @@ import os
 import re
 import shlex
 import subprocess
+import sys
 import threading
 import time
 import tomllib
@@ -245,19 +246,39 @@ class Brain:
 
     # --- git ------------------------------------------------------------------------
 
+    MIRROR_RETRY = 30  # seconds before the first retry; doubles up to 16 times that
+
     def _mirror_changes(self) -> None:
         """Push after every change, outside the brain lock. Never forces: if the mirror
-        holds history this brain lacks, the state stays `failing` for a person to look at."""
+        holds history this brain lacks, the state stays `failing` for a person to look at.
+        A failed push is retried on its own, and git's reason goes to the server's output
+        (never to `/api/health`, which is public and must not show the mirror's address)."""
+        delay, reported = self.MIRROR_RETRY, ""
         while True:
             self._changed.wait()
             self._changed.clear()
-            pushed = self._git(
+            if self.mirror_state == "ok":
+                self.mirror_state = "pending"
+            done = self._git_run(
                 "push", "--quiet", self.mirror or "", "HEAD:refs/heads/main", wait=120
             )
-            self.mirror_state = "ok" if pushed else "failing"
-            if not pushed:
-                time.sleep(30)
-                self._changed.set()
+            if done is not None and done.returncode == 0:
+                delay, reported = self.MIRROR_RETRY, ""
+                if not self._changed.is_set():
+                    self.mirror_state = "ok"
+                continue
+            self.mirror_state = "failing"
+            lines = done.stderr.decode(errors="replace").strip().splitlines() if done else []
+            telling = [line for line in lines if re.search("fatal:|error:|rejected", line)]
+            reason = ((telling or lines or ["git did not answer in time"])[0]).replace(
+                self.mirror or "", "the mirror"
+            )
+            if reason != reported:  # once per cause, not once per retry
+                print(f"Mirror push failed, retrying: {reason}", file=sys.stderr, flush=True)
+                reported = reason
+            time.sleep(delay)
+            delay = min(delay * 2, self.MIRROR_RETRY * 16)
+            self._changed.set()
 
     @staticmethod
     def restore_from_mirror(root: Path, mirror: str, ssh: str | None) -> bool:
@@ -285,6 +306,12 @@ class Brain:
     def _git_output(
         self, *args: str, author: str = "brainfold", wait: int = GIT_TIMEOUT
     ) -> bytes | None:
+        done = self._git_run(*args, author=author, wait=wait)
+        return done.stdout if done and done.returncode == 0 else None
+
+    def _git_run(
+        self, *args: str, author: str = "brainfold", wait: int = GIT_TIMEOUT
+    ) -> subprocess.CompletedProcess[bytes] | None:
         """Run git with no user configuration, hooks, signing or prompt, and a time limit."""
         env = {
             **os.environ,
@@ -297,7 +324,7 @@ class Brain:
         command += ["-c", f"user.email={author}", "-c", "commit.gpgsign=false"]
         command += ["-c", f"core.hooksPath={os.devnull}", *args]
         try:
-            done = subprocess.run(
+            return subprocess.run(
                 command,
                 env=env,
                 stdin=subprocess.DEVNULL,
@@ -307,7 +334,6 @@ class Brain:
             )
         except (OSError, subprocess.TimeoutExpired):
             return None
-        return done.stdout if done.returncode == 0 else None
 
     def _git(self, *args: str, author: str = "brainfold", wait: int = GIT_TIMEOUT) -> bool:
         return self._git_output(*args, author=author, wait=wait) is not None
