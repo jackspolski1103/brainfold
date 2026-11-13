@@ -12,6 +12,7 @@ from starlette.testclient import TestClient
 
 from brainfold import BrainfoldError, cli
 from brainfold.accounts import Accounts
+from brainfold.brain import Brain
 from brainfold.server import create_app
 
 EXAMPLE = Path(__file__).parent.parent / "examples" / "brain"
@@ -120,3 +121,36 @@ def test_passwords_can_be_changed_and_recovered(
     )
     assert Accounts(tmp_path / "a.db").login(ADMIN, "recovered-password")
     assert cli.main(["reset-password", "ghost@atlas.test", "--db", str(tmp_path / "a.db")]) == 1
+
+
+def test_a_mirror_that_fails_is_retried_until_it_takes_every_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(Brain, "MIRROR_RETRY", 0.2)
+    mirror = tmp_path / "secret-address.git"  # not there yet: every push fails
+    shutil.copytree(EXAMPLE, tmp_path / "brain")
+    app = create_app(tmp_path / "brain", tmp_path / "a.db", mirror=str(mirror))
+    panel = TestClient(app)
+    panel.post("/api/setup", json={"email": ADMIN, "password": PASSWORD})
+    assert wait_for(lambda: panel.get("/api/health").json()["mirror"] == "failing")
+    # The brain keeps working, and the change made meanwhile is not forgotten.
+    change = {"path": "/common", "description": "Changed while failing", "read": None}
+    assert panel.put("/api/folder", json=change).status_code == 200
+    time.sleep(1)  # several retries, one cause: reported once, without the address
+    assert panel.get("/api/health").json() == {
+        "git": True,
+        "database": True,
+        "unversioned_writes": 0,
+        "mirror": "failing",
+    }
+    output = capsys.readouterr().err
+    assert output.count("Mirror push failed") == 1 and "secret-address" not in output
+
+    subprocess.run(["git", "init", "-q", "--bare", str(mirror)], check=True)
+    assert wait_for(lambda: panel.get("/api/health").json()["mirror"] == "ok")
+    shown = subprocess.run(
+        ["git", "-C", str(mirror), "show", "main:common/.brainfold.toml"],
+        capture_output=True,
+        text=True,
+    )
+    assert "Changed while failing" in shown.stdout
