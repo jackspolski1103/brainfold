@@ -6,6 +6,7 @@ harness (MCP and /files with a token). See `team.py` for the helpers.
 
 from __future__ import annotations
 
+import sqlite3
 import subprocess
 from collections.abc import Iterator
 from pathlib import Path
@@ -785,3 +786,44 @@ def test_a_grant_typed_with_capital_letters_reaches_the_account(
     inside = people[ERIN].tool("write", path="/locked/vault.md/x.md", content="x")
     assert inside[0] == "unavailable"
     assert_sound(team)
+
+
+def test_a_link_left_unused_for_a_week_stops_working(team: Team, tmp_path: Path) -> None:
+    invite = team.invite(ERIN)
+    visitor = httpx.Client(base_url=team.base)
+    with sqlite3.connect(tmp_path / "brainfold.db") as database:  # eight days go by
+        database.execute("UPDATE users SET invited = invited - 8 * 24 * 3600")
+    assert code(visitor.post("/api/accept", json={"invite": invite, "password": PASSWORD})) == (
+        "invalid_invite"
+    )
+    # The administrator hands out a new one, which works.
+    fresh = team.admin.panel.post(f"/api/users/{ERIN}/reset", json={}).json()["invite"]
+    assert (
+        visitor.post("/api/accept", json={"invite": fresh, "password": PASSWORD}).status_code == 200
+    )
+
+
+def test_a_password_reset_disconnects_every_harness_of_that_account_and_no_other(
+    team: Team, people: dict[str, Person]
+) -> None:
+    link = team.admin.panel.post(f"/api/users/{ERIN}/reset", json={}).json()["invite"]
+    assert people[ERIN].tool("list", path="/")[0] == "ok"  # nothing changes until it is used
+    visitor = httpx.Client(base_url=team.base)
+    assert (
+        visitor.post("/api/accept", json={"invite": link, "password": "a-new-password"}).status_code
+        == 200
+    )
+    assert people[ERIN].agent.get("/files/common/handbook.md").status_code == 401
+    assert people[ERIN].tree().status_code == 401
+    assert people[DANA].agent.get("/files/common/handbook.md").status_code == 200
+
+
+def test_administration_refuses_people_who_are_not_there(
+    team: Team, people: dict[str, Person]
+) -> None:
+    team.invite(PENDING := "pending@atlas.test")
+    # Someone who has not accepted cannot be put in a group; the group stays as it was.
+    assert code(team.group("finance", ALICE, PENDING)) == "invalid_group"
+    assert code(team.group("finance", ALICE, "ghost@atlas.test")) == "invalid_group"
+    assert team.admin.panel.get("/api/groups").json()["groups"]["finance"] == [ALICE, BOB]
+    assert team.admin.panel.delete("/api/users/ghost@atlas.test").status_code == 404
