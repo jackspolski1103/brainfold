@@ -59,6 +59,8 @@ def test_common_path_forms_are_accepted_and_answers_use_the_canonical_path(brain
     assert brain.list(ALICE, "/projects/costs/")["path"] == "/projects/costs"
     assert brain.list(ALICE, "projects/costs")["path"] == "/projects/costs"
     assert brain.read(ALICE, "projects/costs/process.md")["path"] == "/projects/costs/process.md"
+    sizes = {e["path"]: e.get("size") for e in brain.list(ALICE, "/projects/costs")["entries"]}
+    assert sizes["/projects/costs/process.md"] == 157  # files carry their size in a listing
     assert brain.write(ALICE, "projects/costs/new.md", "x")["path"] == "/projects/costs/new.md"
     made = brain.create_folder(ALICE, "/projects/costs/reports/", "Reports")
     assert made["path"] == "/projects/costs/reports"

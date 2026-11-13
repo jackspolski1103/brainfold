@@ -179,7 +179,9 @@ def create_app(
         ctx: Context, path: str, offset: int = 0, limit: int | None = None
     ) -> dict[str, Any]:
         """Read a text file. Returns its `version`, needed to replace, move or delete it.
-        Long files come in parts: continue from `next_offset` (a line number)."""
+        Long files come in parts: continue from `next_offset` (a line number). A file that
+        is not text (a PDF, a spreadsheet) returns no content but a `fetch` command for the
+        brainfold command line, which saves it to disk."""
         return await tool(ctx, "read", path, lambda who: brain.read(who, path, offset, limit))
 
     @server.tool(name="write")
@@ -288,7 +290,8 @@ def create_app(
     @server.tool()
     async def use_skill(ctx: Context, name: str) -> dict[str, Any]:
         """Load a shared team procedure (skill) by name. When a task matches one of the
-        skills listed below, call this first and follow the procedure it returns."""
+        skills listed below, call this first and follow the procedure it returns. A listed
+        name is the skill's folder plus a short suffix that keeps it unique."""
 
         def load(who: str) -> dict[str, Any]:
             skills = skills_for(who)

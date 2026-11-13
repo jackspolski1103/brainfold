@@ -4,6 +4,7 @@ export type Entry = {
   path: string;
   kind: "directory" | "file";
   description?: string;
+  size?: number;
   read?: string[] | null;
   write?: string[] | null;
 };
@@ -84,3 +85,6 @@ export function ago(seconds: number | null): string {
   if (passed < 86400 * 30) return `${Math.floor(passed / 86400)} d ago`;
   return new Date(seconds * 1000).toLocaleDateString();
 }
+
+export const bytes = (size: number) =>
+  size < 1024 ? `${size} B` : size < 1048576 ? `${(size / 1024).toFixed(1)} KB` : `${(size / 1048576).toFixed(1)} MB`;

@@ -1,7 +1,7 @@
 import { ChevronRight, File as FileIcon, FileText, Folder, FolderOpen, FolderTree, Home, Pencil, Sparkles } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { AccessDialog, Grants, isPersonal, useDirectory } from "./Access";
-import { ApiError, type Entry, type FileView, type Hit, type Listing, api, baseName, parent, tree } from "./api";
+import { ApiError, type Entry, type FileView, type Hit, type Listing, api, baseName, bytes, parent, tree } from "./api";
 import { Badge, Button, Code, Empty, Markdown, Notice, SearchInput, Section, Segmented, Table, Td, Tr, cx } from "./ui";
 
 const isFile = (path: string) => /\.[a-z0-9]+$/i.test(path);
@@ -102,7 +102,7 @@ function FileCard({ file }: { file: FileView }) {
   return (
     <Section
       title={baseName(file.path)}
-      description={<span className="font-mono text-xs text-faint">{file.size.toLocaleString()} bytes · version {file.version.slice(0, 12)}</span>}
+      description={<span className="font-mono text-xs text-faint">{bytes(file.size)} · version {file.version.slice(0, 12)}</span>}
       action={markdown && <Segmented label="View" value={view} onChange={setView} options={[{ id: "rendered", label: "Rendered" }, { id: "source", label: "Source" }]} />}
     >
       {file.kind !== "text" ? (
@@ -171,7 +171,7 @@ function FolderView({ listing, admin, onEdit }: { listing: Listing; admin: boole
       {listing.entries.length === 0 ? (
         <Empty icon={FolderOpen} title="This folder is empty">Agents create files and folders here through the brain's tools, wherever their person can write.</Empty>
       ) : (
-        <Table head={["Name", "About", ...(admin ? ["Declared access"] : [])]}>
+        <Table head={["Name", "About", "Size", ...(admin ? ["Declared access"] : [])]}>
           {listing.entries.map((entry) => (
             <Tr key={entry.path} onClick={() => (location.hash = link(entry.path, entry.kind === "file" ? "file" : "folder"))}>
               <Td>
@@ -181,6 +181,7 @@ function FolderView({ listing, admin, onEdit }: { listing: Listing; admin: boole
                 </a>
               </Td>
               <Td><span className="text-muted">{entry.description}</span></Td>
+              <Td><span className="font-mono text-xs whitespace-nowrap text-faint">{entry.size == null ? "" : bytes(entry.size)}</span></Td>
               {admin && (
                 <Td>
                   {entry.kind === "directory" && (entry.read || entry.write) && (

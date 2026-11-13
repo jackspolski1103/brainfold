@@ -82,7 +82,12 @@ def _put(source: Path, path: str, replace: bool) -> None:
         except BrainfoldError as error:
             if error.code != "unavailable":
                 raise
-    result = json.load(_request("PUT", path, source.read_bytes(), version))
+    try:
+        result = json.load(_request("PUT", path, source.read_bytes(), version))
+    except BrainfoldError as error:
+        if error.code == "already_exists":  # the server's hint is written for agents
+            raise BrainfoldError(error.code, "The file exists. Add --replace.") from None
+        raise
     print(f"Stored {result['path']} ({result['size']} bytes, version {result['version'][:12]}).")
 
 

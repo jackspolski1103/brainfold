@@ -430,6 +430,8 @@ class Brain:
                         entry["description"] = description
                     if manage:
                         entry |= {"read": child_meta.get("read"), "write": child_meta.get("write")}
+                elif read:  # an administrator who only manages sees names, not sizes
+                    entry["size"] = child.stat().st_size
             except BrainfoldError:
                 continue
             entries.append(entry)
