@@ -239,6 +239,8 @@ class Brain:
                 raise _unavailable()
         if not write:
             raise BrainfoldError("write_denied", "You do not have write permission on this path.")
+        if any(above.is_file() for above in target.parents):
+            raise _unavailable()  # a file is not a folder to write into
         return target
 
     # --- git ------------------------------------------------------------------------
@@ -1011,6 +1013,10 @@ class Brain:
         grants = [*(read or []), *(write or [])]
         if not all(isinstance(item, str) and GRANT.fullmatch(item) for item in grants):
             raise BrainfoldError("invalid_metadata", "The access lists are not valid.")
+        # Accounts are stored in lower case: "Ana@Example.com" must grant ana@example.com.
+        read, write = (
+            None if grant is None else [g.lower() for g in grant] for grant in (read, write)
+        )
         keep = {
             key: value for key, value in (("read", read), ("write", write)) if value is not None
         }

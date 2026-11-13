@@ -757,3 +757,31 @@ def test_history_shows_a_person_only_the_revisions_they_could_read_then_and_can_
         erin.tool("history", path="/finance/never-existed.md")[1],
     )
     assert_sound(team)
+
+
+def test_a_group_emptied_by_removing_its_last_member_is_retired_like_a_deleted_one(
+    team: Team, people: dict[str, Person]
+) -> None:
+    team.group("solo", DANA)
+    team.access("/locked", ["@solo"], ["@solo"])
+    assert people[DANA].tool("write", path="/locked/plan.md", content="old secret")[0] == "ok"
+    assert team.admin.panel.delete(f"/api/users/{DANA}").status_code == 200
+    # Nobody can be given the old name, so nobody inherits its folders or their history.
+    assert code(team.group("solo", ERIN)) == "invalid_group"
+    assert people[ERIN].tool("read", path="/locked/plan.md")[0] == "unavailable"
+    assert people[ERIN].tool("history", path="/locked/plan.md")[0] == "no_history"
+    # A group that still has members is untouched.
+    team.admin.panel.delete(f"/api/users/{BOB}")
+    assert team.admin.panel.get("/api/groups").json()["groups"]["finance"] == [ALICE]
+
+
+def test_a_grant_typed_with_capital_letters_reaches_the_account(
+    team: Team, people: dict[str, Person]
+) -> None:
+    assert team.access("/locked", ["Erin@Atlas.TEST"], ["Erin@Atlas.TEST"]).status_code == 200
+    assert team.admin.tree("/locked").json()["read"] == [ERIN]
+    assert sees(people[ERIN], "/locked/vault.md")
+    # A file is not a folder: writing "inside" one is refused cleanly.
+    inside = people[ERIN].tool("write", path="/locked/vault.md/x.md", content="x")
+    assert inside[0] == "unavailable"
+    assert_sound(team)
