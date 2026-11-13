@@ -11,6 +11,7 @@ Decisions are recorded when the author confirms them. A later change keeps the h
 | [0010 Core plan](0010-core-plan.md) | Accepted; phase 1 in progress |
 | [0011 Name: Brainfold](0011-name.md) | Accepted |
 | [0012 License and repository](0012-license-and-repository.md) | Accepted |
+| [0013 Panel design and documentation site](0013-panel-design-and-documentation.md) | Accepted |
 
 ## Pending
 

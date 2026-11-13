@@ -39,6 +39,10 @@ export type Activity = {
   versioned: boolean | null;
 };
 
+export type Skill = { name: string; description: string; path: string | null };
+export type Hit = { path: string; line: number; text: string };
+export type Health = { git: boolean; database: boolean; unversioned_writes: number; mirror: string };
+
 export class ApiError extends Error {
   constructor(
     public code: string,
@@ -65,3 +69,18 @@ export async function api<T>(method: string, path: string, body?: unknown): Prom
 
 export const when = (seconds: number | null) =>
   seconds ? new Date(seconds * 1000).toLocaleString() : "never";
+
+export const message = (failure: unknown) => (failure instanceof ApiError ? failure.message : "Something went wrong.");
+export const baseName = (path: string) => path.split("/").filter(Boolean).pop() ?? "/";
+export const parent = (path: string) => `/${path.split("/").filter(Boolean).slice(0, -1).join("/")}`;
+export const tree = (path: string) => api<Listing>("GET", `/api/tree?path=${encodeURIComponent(path || "/")}`);
+
+export function ago(seconds: number | null): string {
+  if (!seconds) return "never";
+  const passed = Date.now() / 1000 - seconds;
+  if (passed < 60) return "just now";
+  if (passed < 3600) return `${Math.floor(passed / 60)} min ago`;
+  if (passed < 86400) return `${Math.floor(passed / 3600)} h ago`;
+  if (passed < 86400 * 30) return `${Math.floor(passed / 86400)} d ago`;
+  return new Date(seconds * 1000).toLocaleDateString();
+}

@@ -434,3 +434,17 @@ def test_the_built_panel_is_served_with_a_restrictive_policy(
     assert client.get("/assets/app.js").status_code == 200
     assert client.get("/assets/../index.html").status_code in {200, 404}  # never outside the panel
     assert client.get("/api/state").json()["code_required"] is False
+
+
+def test_panel_search_and_skills_follow_the_permissions_of_the_person(app: Any) -> None:
+    admin = TestClient(app)
+    admin.post("/api/setup", json={"email": ADMIN, "password": PASSWORD})
+    alice, bob = join(app, admin, ALICE), join(app, admin, BOB)
+    admin.put("/api/groups/costs", json={"members": [ALICE]})
+    paths = [skill["path"] for skill in alice.get("/api/skills").json()["skills"]]
+    assert paths[0] is None and any(path and path.endswith("/SKILL.md") for path in paths)
+    assert [skill["path"] for skill in bob.get("/api/skills").json()["skills"]] == [None]
+    hits = alice.get("/api/search", params={"q": "the"}).json()["hits"]
+    assert hits and not bob.get("/api/search", params={"q": "the"}).json().get("hits")
+    assert code(alice.get("/api/search")) == "empty_query"
+    assert TestClient(app).get("/api/search", params={"q": "the"}).status_code == 401

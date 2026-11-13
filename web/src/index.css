@@ -1,17 +1,156 @@
 @import "tailwindcss";
+@import "@fontsource/ibm-plex-sans/latin-400.css";
+@import "@fontsource/ibm-plex-sans/latin-500.css";
+@import "@fontsource/ibm-plex-sans/latin-600.css";
+@import "@fontsource/ibm-plex-mono/latin-400.css";
 
-/* Dark styles follow a class that main.tsx keeps in step with the system setting. */
-@custom-variant dark (&:where(.dark, .dark *));
-
+/* One set of tokens per theme; every component reads these and nothing else. */
 :root {
-  color-scheme: light;
+  color-scheme: dark;
+  --bg: #0e1014;
+  --card: #16181a;
+  --panel: #1a1c1e;
+  --line: #2b2c30;
+  --shell: #212225;
+  --fg: #ebebeb;
+  --muted: #adaeb0;
+  --faint: #7d7f80;
+  --accent: #30b3ff;
+  --success: #4cc38a;
+  --warning: #f1b84b;
+  --danger: #f2686b;
 }
 
-:root.dark {
-  color-scheme: dark;
+:root.light {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --card: #ffffff;
+  --panel: #fbfbfc;
+  --line: #e0e2e7;
+  --shell: #e0e2e7;
+  --fg: #16181d;
+  --muted: #555962;
+  --faint: #80848e;
+  --accent: #0876c4;
+  --success: #17794a;
+  --warning: #8f5e00;
+  --danger: #c4302f;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-card: var(--card);
+  --color-panel: var(--panel);
+  --color-line: var(--line);
+  --color-shell: var(--shell);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --font-sans: "IBM Plex Sans", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
 }
 
 body {
-  @apply bg-zinc-50 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  @apply bg-bg font-sans text-fg antialiased;
+}
+
+@layer base {
+  *:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+dialog {
+  @apply m-auto w-[calc(100vw-2rem)] max-w-lg rounded-lg border border-line bg-card p-0 text-fg shadow-2xl;
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 0.6);
+}
+
+/* Rendered Markdown: brain files and the documentation. */
+.prose {
+  @apply text-[15px] leading-7 text-fg;
+}
+.prose > :first-child {
+  @apply mt-0;
+}
+.prose h1 {
+  @apply mt-0 mb-3 text-3xl font-medium tracking-tight;
+}
+.prose h2 {
+  @apply mt-10 mb-3 scroll-mt-20 border-b border-line pb-2 text-xl font-medium;
+}
+.prose h3 {
+  @apply mt-7 mb-2 scroll-mt-20 text-base font-semibold;
+}
+.prose p,
+.prose ul,
+.prose ol,
+.prose pre,
+.prose table,
+.prose blockquote {
+  @apply my-4;
+}
+.prose ul {
+  @apply list-disc pl-6;
+}
+.prose ol {
+  @apply list-decimal pl-6;
+}
+.prose li {
+  @apply my-1;
+}
+.prose a {
+  @apply text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent;
+}
+.prose strong {
+  @apply font-semibold;
+}
+.prose code {
+  @apply rounded border border-line bg-panel px-1 py-0.5 font-mono text-[13px];
+}
+.prose pre {
+  @apply overflow-x-auto rounded-md border border-line bg-panel p-4 font-mono text-[13px] leading-6;
+}
+.prose pre code {
+  @apply border-0 bg-transparent p-0;
+}
+.prose blockquote {
+  @apply rounded-md border border-accent/25 bg-accent/10 px-4 py-2 text-[14px];
+}
+.prose blockquote p {
+  @apply my-1;
+}
+.prose table {
+  @apply block w-full overflow-x-auto text-left text-sm;
+}
+.prose th {
+  @apply border-b border-line px-3 py-2 text-xs font-bold text-faint;
+}
+.prose td {
+  @apply border-b border-line px-3 py-2 align-top;
+}
+.prose hr {
+  @apply my-8 border-line;
 }

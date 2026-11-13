@@ -477,6 +477,19 @@ def create_app(
         path = request.query_params["path"]
         return act(user.email, "read", path, lambda: brain.read(user.email, path))
 
+    def search(request: Request, user: User, _body: dict) -> dict[str, Any]:
+        return brain.search(user.email, request.query_params.get("q", ""))
+
+    def skills(_request: Request, user: User, _body: dict) -> dict[str, Any]:
+        """What `use_skill` offers this person's agent. The built-in one has no path."""
+        found = skills_for(user.email).items()
+        return {
+            "skills": [
+                {"name": name, "description": skill["description"], "path": skill.get("path")}
+                for name, skill in found
+            ]
+        }
+
     def folder(_request: Request, user: User, body: dict) -> dict[str, Any]:
         return act(
             user.email,
@@ -572,6 +585,8 @@ def create_app(
             Route("/api/tokens/{id}", endpoint(revoke), methods=["DELETE"]),
             Route("/api/tree", endpoint(tree)),
             Route("/api/file", endpoint(file)),
+            Route("/api/search", endpoint(search)),
+            Route("/api/skills", endpoint(skills)),
             Route("/api/folder", endpoint(folder, admin=True), methods=["PUT"]),
             Route("/api/activity", endpoint(activity, admin=True)),
         ]
