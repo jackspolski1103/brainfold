@@ -742,7 +742,7 @@ class Brain:
                     ],
                 )
             return {"path": destination, "versioned": versioned}
-        if not origin.is_file():
+        if not origin.is_file() and (origin.exists() or version is None):
             raise _unavailable()
         if version is None:
             raise BrainfoldError("conflict", "Pass the version of the file you are moving.")
@@ -779,7 +779,7 @@ class Brain:
             meta.unlink(missing_ok=True)
             target.rmdir()
             return {"path": path, "versioned": self._commit(who, f"delete {path}", meta)}
-        if not target.is_file():
+        if not target.is_file() and (target.exists() or version is None):
             raise _unavailable()
         if version is None:
             raise BrainfoldError("conflict", "Pass the version of the file you are deleting.")
