@@ -63,6 +63,11 @@ def paths(listing: dict) -> list[str]:
     return [entry["path"] for entry in listing["entries"]]
 
 
+def entry(brain: Brain, who: str, path: str) -> dict:
+    listing = brain.list(who, path.rsplit("/", 1)[0])
+    return next(item for item in listing["entries"] if item["path"] == path)
+
+
 def code(call, *args) -> str:
     with pytest.raises(BrainfoldError) as error:
         call(*args)
@@ -459,3 +464,33 @@ def test_files_of_any_type_are_stored_with_the_same_rules(brain: Brain, tmp_path
     current = brain.download(ALICE, "/projects/costs/salaries.xlsx")[1]
     brain.restore(ALICE, "/projects/costs/salaries.xlsx", first, current)
     assert brain.download(ALICE, "/projects/costs/salaries.xlsx")[0] == sheet
+
+
+def test_files_carry_a_description_that_follows_them(brain: Brain) -> None:
+    folder = "/projects/costs"
+    stored = brain.write(ALICE, f"{folder}/q3.md", "numbers")
+    assert "description" not in entry(brain, ALICE, f"{folder}/q3.md")
+    brain.describe_file(ALICE, f"{folder}/q3.md", "Third quarter totals, final.")
+    assert entry(brain, ALICE, f"{folder}/q3.md")["description"] == "Third quarter totals, final."
+    # The folder keeps its guidance and its access rules.
+    listing = brain.list(ALICE, folder)
+    assert listing["description"] and listing["start_here"] == [f"{folder}/process.md"]
+    assert code(brain.read, BOB, f"{folder}/q3.md") == "unavailable"
+    # It follows a rename, and leaves with the file: a later file of that name starts clean.
+    brain.move(ALICE, f"{folder}/q3.md", f"{folder}/third.md", stored["version"])
+    assert entry(brain, ALICE, f"{folder}/third.md")["description"].startswith("Third quarter")
+    brain.delete(ALICE, f"{folder}/third.md", stored["version"])
+    brain.write(ALICE, f"{folder}/third.md", "other")
+    assert "description" not in entry(brain, ALICE, f"{folder}/third.md")
+    # Denials: no write, a folder, several lines.
+    assert code(brain.describe_file, BOB, f"{folder}/process.md", "x") == "unavailable"
+    assert code(brain.describe_file, ALICE, folder, "x") == "unavailable"
+    assert code(brain.describe_file, ALICE, f"{folder}/process.md", "a\nb") == "invalid_metadata"
+
+
+def test_a_write_names_the_folders_it_created_without_a_description(brain: Brain) -> None:
+    written = brain.write(ALICE, "/projects/costs/2026/q1/notes.md", "x")
+    assert written["new_folders"] == ["/projects/costs/2026", "/projects/costs/2026/q1"]
+    assert "describe_folder" in written["note"]
+    again = brain.write(ALICE, "/projects/costs/2026/q1/more.md", "x")
+    assert "new_folders" not in again and "note" not in again

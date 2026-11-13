@@ -379,6 +379,20 @@ class Brain:
             if ".git" not in leftover.parts:
                 leftover.unlink(missing_ok=True)
 
+    def _fresh(self, target: Path) -> dict[str, Any]:
+        """What to tell the caller about the folders this write is about to create."""
+        missing, folder = [], target.parent
+        while not folder.exists():
+            missing.append(self._path(folder))
+            folder = folder.parent
+        if not missing:
+            return {}
+        return {
+            "new_folders": missing[::-1],
+            "note": "These folders were created without a description. Call describe_folder "
+            "on each so whoever arrives next finds their way.",
+        }
+
     def _store(self, target: Path, data: bytes) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
         temporary = target.with_name(f".{target.name}.brainfold-tmp")
@@ -430,8 +444,11 @@ class Brain:
                         entry["description"] = description
                     if manage:
                         entry |= {"read": child_meta.get("read"), "write": child_meta.get("write")}
-                elif read:  # an administrator who only manages sees names, not sizes
+                elif read:  # an administrator who only manages sees names, nothing more
                     entry["size"] = child.stat().st_size
+                    about = meta.get("files")
+                    if isinstance(about, dict) and isinstance(about.get(child.name), str):
+                        entry["description"] = about[child.name]
             except BrainfoldError:
                 continue
             entries.append(entry)
@@ -612,12 +629,13 @@ class Brain:
                 "A SKILL.md must start with front matter: a line '---', then 'name: ...' and "
                 "'description: ...', then a line '---'.",
             )
+        fresh = self._fresh(target)
         self._baseline(target)
         self._store(target, data)
         path = self._path(target)
         version = _version(data)
         versioned = self._save(who, f"{action} {path}", [(target, action, version)])
-        return {"path": path, "version": version, "versioned": versioned}
+        return {"path": path, "version": version, "versioned": versioned} | fresh
 
     @_locked
     def write(
@@ -726,11 +744,16 @@ class Brain:
             raise BrainfoldError("invalid_skill", "The file is not a valid SKILL.md.")
         self._baseline(origin)
         leaving = [(origin, "move_out", None, self._snapshot(origin))]
+        described = self._meta(origin.parent).get("files")
+        about = described.get(origin.name) if isinstance(described, dict) else None
         target.parent.mkdir(parents=True, exist_ok=True)
         os.replace(origin, target)
         versioned = self._commit(who, f"move {source} to {destination}", origin, target)
         if versioned:
             self._record(who, [*leaving, (target, "move_in", version, self._snapshot(target))])
+        if about:
+            self._about(who, origin, None)
+            self._about(who, target, about)
         return {"path": destination, "version": version, "versioned": versioned}
 
     @_locked
@@ -760,6 +783,7 @@ class Brain:
         versioned = self._commit(who, f"delete {path}", target)
         if versioned:
             self._record(who, [(target, "delete", None, snapshot)])
+        self._about(who, target, None)
         return {"path": path, "versioned": versioned}
 
     # --- binary files ---------------------------------------------------------------
@@ -781,12 +805,14 @@ class Brain:
         data = source.read_bytes()
         if target.name == "SKILL.md" and not _front_matter(data):
             raise BrainfoldError("invalid_skill", "The file is not a valid SKILL.md.")
+        fresh = self._fresh(target)
         self._baseline(target)
         target.parent.mkdir(parents=True, exist_ok=True)
         os.replace(source, target)
         digest = _version(data)
         versioned = self._save(who, f"upload {path}", [(target, "upload", digest)])
-        return {"path": path, "version": digest, "size": len(data), "versioned": versioned}
+        result = {"path": path, "version": digest, "size": len(data), "versioned": versioned}
+        return result | fresh
 
     # --- history --------------------------------------------------------------------
 
@@ -877,11 +903,27 @@ class Brain:
                 "The description must be text and start_here a list of paths relative to the "
                 "folder.",
             )
+        keep = dict(keep)
+        files = keep.pop("files", None)
+        if files is None and target.is_dir():
+            files = self._meta(target).get("files")
+        # The description of a file that is gone goes with it.
+        files = {
+            name: about
+            for name, about in (files if isinstance(files, dict) else {}).items()
+            if (target / name).is_file()
+        }
         meta = {"description": description, "start_here": start_here, **keep}
-        # ponytail: only the four known keys are kept; extend when the format grows.
+        # ponytail: only the known keys are kept; extend when the format grows.
         text = "".join(
             f"{key} = {json.dumps(value, ensure_ascii=False)}\n" for key, value in meta.items()
         )
+        if files:
+            meta["files"] = files
+            quoted = functools.partial(json.dumps, ensure_ascii=False)
+            text += "\n[files]\n" + "".join(
+                f"{quoted(name)} = {quoted(about)}\n" for name, about in files.items()
+            )
         try:
             if tomllib.loads(text) != meta:
                 raise ValueError
@@ -914,6 +956,35 @@ class Brain:
         meta = self._meta(target)
         keep = {key: meta[key] for key in ("read", "write") if key in meta}
         return self._guide(who, target, description, start_here or [], keep)
+
+    def _about(self, who: str, target: Path, text: str | None) -> bool:
+        """Set, or with `None` drop, the one-line description of a file. Nothing is
+        written when there is nothing to change."""
+        folder = target.parent
+        meta = self._meta(folder)
+        files = dict(meta["files"]) if isinstance(meta.get("files"), dict) else {}
+        if files.get(target.name) == text:
+            return True
+        if text:
+            files[target.name] = text
+        else:
+            files.pop(target.name, None)
+        keep = {key: meta[key] for key in ("read", "write") if key in meta} | {"files": files}
+        guide = meta.get("description", ""), meta.get("start_here", [])
+        return self._guide(who, folder, *guide, keep)["versioned"]
+
+    @_locked
+    def describe_file(self, who: str, path: str, description: str) -> dict[str, Any]:
+        """One line about a file, shown next to it in listings. Empty text removes it."""
+        target = self._writable(who, path)
+        if not target.is_file():
+            raise _unavailable()
+        if not isinstance(description, str) or len(description) > 300 or "\n" in description:
+            raise BrainfoldError(
+                "invalid_metadata", "The description must be one line of at most 300 characters."
+            )
+        text = description.strip()
+        return {"path": path, "description": text, "versioned": self._about(who, target, text)}
 
     @_locked
     def set_access(

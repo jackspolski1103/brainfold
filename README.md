@@ -24,7 +24,7 @@ curl -b cookies.txt -H "$J" -d '{"name":"claude code"}' $U/api/tokens   # shows 
 claude mcp add --transport http brainfold $U/mcp --header "Authorization: Bearer <token>"
 ```
 
-MCP tools: `list`, `read`, `write`, `edit`, `append`, `move`, `delete`, `create_folder`, `describe_folder`, `search`, `history`, `restore`, `list_learnings`, `use_skill`.
+MCP tools: `list`, `read`, `write`, `edit`, `append`, `move`, `delete`, `create_folder`, `describe_folder`, `describe_file`, `search`, `history`, `restore`, `list_learnings`, `use_skill`.
 
 Files of any type (a manual, a spreadsheet) go through the command line, which reads `BRAINFOLD_URL` and `BRAINFOLD_TOKEN` from the environment or from `~/.config/brainfold/config.toml` (mode 0600):
 

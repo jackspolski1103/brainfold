@@ -87,7 +87,7 @@ export function Overview({ user }: { user: User }) {
             </Product>
           </>
         )}
-        <Product href="#/docs" icon={BookOpen} title="Documentation" stats={[["14", "tools for agents"]]}>
+        <Product href="#/docs" icon={BookOpen} title="Documentation" stats={[["15", "tools for agents"]]}>
           How the brain works, how permissions are decided and how to run it for your team.
         </Product>
       </div>

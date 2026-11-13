@@ -108,8 +108,12 @@ def create_app(
         """Run one brain operation and record it, with whether git kept the change."""
         try:
             result = call()
-        except BrainfoldError:
+        except BrainfoldError as error:
             accounts.log(actor, action, path, False)
+            if error.code == "write_denied":  # say who can change that
+                admins = [user["email"] for user in accounts.users() if user["role"] == "admin"]
+                ask = f" Ask an administrator to grant it: {', '.join(admins[:3])}."
+                raise BrainfoldError(error.code, error.message + ask) from None
             raise
         versioned = result.get("versioned") if isinstance(result, dict) else None
         accounts.log(actor, action, path, True, versioned)
@@ -170,8 +174,9 @@ def create_app(
 
     @server.tool(name="list")
     async def list_folder(ctx: Context, path: str = "/", offset: int = 0) -> dict[str, Any]:
-        """List a folder: its description, where to start, and the entries you can see.
-        Pass `offset` to continue when `truncated` is true."""
+        """List a folder: its description, where to start, and the entries you can see,
+        each folder with its description and each file with its size and, when someone
+        wrote one, a description. Pass `offset` to continue when `truncated` is true."""
         return await tool(ctx, "list", path, lambda who: brain.list(who, path, offset=offset))
 
     @server.tool(name="read")
@@ -179,7 +184,9 @@ def create_app(
         ctx: Context, path: str, offset: int = 0, limit: int | None = None
     ) -> dict[str, Any]:
         """Read a text file. Returns its `version`, needed to replace, move or delete it.
-        Long files come in parts: continue from `next_offset` (a line number). A file that
+        Long files come in parts: when `truncated` is true, continue from `next_offset` (a
+        line number). `version` identifies the content, so it stays the same across a move;
+        `versioned: true` in an answer means the change is in the history. A file that
         is not text (a PDF, a spreadsheet) returns no content but a `fetch` command for the
         brainfold command line, which saves it to disk."""
         return await tool(ctx, "read", path, lambda who: brain.read(who, path, offset, limit))
@@ -189,7 +196,8 @@ def create_app(
         ctx: Context, path: str, content: str, version: str | None = None
     ) -> dict[str, Any]:
         """Create a file, or replace an existing one by passing the `version` you last read.
-        Missing parent folders are created. To change part of a file use edit; to add to
+        Missing parent folders are created and named in `new_folders`: describe them with
+        describe_folder. To change part of a file use edit; to add to
         the end use append. Writing <folder>/SKILL.md with `name` and `description` front
         matter publishes a skill; the answer carries the `skill` name use_skill takes."""
 
@@ -272,6 +280,15 @@ def create_app(
             "describe_folder",
             path,
             lambda who: brain.describe_folder(who, path, description, start_here),
+        )
+
+    @server.tool()
+    async def describe_file(ctx: Context, path: str, description: str) -> dict[str, Any]:
+        """Say in one line what a file is, so others know before opening it. It shows next
+        to the file in list. Do it for files whose name does not explain them, and for
+        files that are not text. Empty text removes the description."""
+        return await tool(
+            ctx, "describe_file", path, lambda who: brain.describe_file(who, path, description)
         )
 
     @server.tool(name="search")

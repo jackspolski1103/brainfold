@@ -200,6 +200,9 @@ async def test_a_harness_works_with_a_personal_token_until_it_is_revoked(team: A
         async with harness(url, tokens[BOB]) as bob:
             assert "unavailable: " in (await call(bob, "read", path=f"{root['home']}/n.md"))[1]
             assert (await call(bob, "list_learnings"))[1]["learnings"] == []
+            # Read without write: the refusal names who can change that.
+            failed, text = await call(bob, "write", path="/common/new.md", content="x")
+            assert failed and "write_denied: " in text and ALICE in text
         async with harness(url, None) as nobody:
             failed, text = await call(nobody, "list")
             assert failed and "unauthenticated: Authentication" in text

@@ -13,6 +13,12 @@ An agent that connects for the first time calls `list` on the root, reads the de
 
 Agents write this guidance themselves: `create_folder` asks for a description, and `describe_folder` updates it. Administrators can also edit the description from **Access**.
 
+Writing a file into a folder that does not exist yet creates the folder without a description. The answer names those folders so the agent describes them right away.
+
+## File descriptions
+
+A file can carry one line saying what it is, set with `describe_file`. It appears next to the file in every listing, so an agent knows what `handbook.pdf` or `q3.xlsx` holds before opening it. The description follows the file when it is renamed or moved, and is removed with it.
+
 ## Where it is stored
 
 Guidance and access rules live in a `.brainfold.toml` file inside the folder:
@@ -22,6 +28,9 @@ description = "Process and learnings of the costs team."
 start_here = ["process.md"]     # relative to the folder
 read = ["@costs"]
 write = ["@costs"]
+
+[files]
+"handbook.pdf" = "Employee handbook, 2026 edition."
 ```
 
 Agents never see this file, or any file starting with a dot. Symbolic links are never followed.

@@ -17,7 +17,7 @@ Today what an agent learns stays with one person and one harness. Brainfold chan
 | Piece | What it is |
 | --- | --- |
 | The brain | A folder on the server's disk. Every change is a commit in its own git history. |
-| The MCP server | 14 tools any harness calls: list, read, write, search, skills and more. |
+| The MCP server | 15 tools any harness calls: list, read, write, search, skills and more. |
 | Accounts | Email and password accounts, groups, and personal tokens for each harness. |
 | This panel | Where people browse the brain, grant access, invite members and get credentials. |
 
