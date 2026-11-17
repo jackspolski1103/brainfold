@@ -78,3 +78,28 @@ def test_only_a_session_start_walks_the_brain_and_never_on_the_event_loop(
         answer = ana.tool("write", path="/projects/costs/close/SKILL.md", content=skill)
         assert answer[1]["skill"].startswith("close-")
         assert walks and not any(walks)
+
+
+# Regression: ISSUE-002 — a file name of 241 to 255 bytes failed with storage_error because
+# its temporary name did not fit, and any storage error then deleted the temporary file of
+# every upload in flight, so other people's uploads failed too.
+# Found by /qa on 2026-11-17
+# Report: .gstack/qa-reports/run-20261117T131822Z/qa-report-brainfold-2026-11-17.md
+def test_a_storage_error_of_one_caller_never_removes_another_upload_in_flight(
+    brain: Brain, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert brain.write(ALICE, "/projects/costs/" + "n" * 240, "x")["versioned"]
+    for length in (241, 255):
+        assert code(brain.write, ALICE, "/projects/costs/" + "n" * length, "x") == "unavailable"
+    upload = brain.root / ".upload-0123456789abcdef.brainfold-tmp"  # someone else's, in flight
+    upload.write_bytes(b"half of a file")
+
+    def full_disk(target: Path, data: bytes) -> None:
+        raise OSError("no space left on device")
+
+    monkeypatch.setattr(brain, "_store", full_disk)
+    assert code(brain.write, ALICE, "/projects/costs/other.md", "x") == "storage_error"
+    assert upload.read_bytes() == b"half of a file"
+    monkeypatch.undo()
+    Brain(brain.root, brain.groups)  # a restart still clears what a crash left behind
+    assert not upload.exists()
