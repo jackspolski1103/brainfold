@@ -503,9 +503,9 @@ def create_app(
         return {"users": accounts.users()}
 
     def remove_user(request: Request, user: User, _body: dict) -> dict[str, Any]:
-        accounts.remove_user(request.path_params["email"])
-        brain.forget(user.email, request.path_params["email"])
-        accounts.log(user.email, "remove_member", request.path_params["email"], True)
+        email = accounts.remove_user(request.path_params["email"])
+        brain.forget(user.email, email)
+        accounts.log(user.email, "remove_member", email, True)
         return {}
 
     def groups(request: Request, user: User, body: dict) -> dict[str, Any]:

@@ -197,7 +197,9 @@ class Accounts:
             )
         ]
 
-    def remove_user(self, email: str) -> None:
+    def remove_user(self, email: str) -> str:
+        """Returns the account's address as stored."""
+        email = email.strip().lower()  # accounts are stored in lower case
         with self._lock:
             admins = [row[0] for row in self._run("SELECT email FROM users WHERE role = 'admin'")]
             if admins == [email]:
@@ -211,6 +213,7 @@ class Accounts:
             for name in set(left) - self.groups().keys():
                 # A group emptied this way is gone like one deleted by hand: name retired.
                 self._run("INSERT OR IGNORE INTO retired_groups VALUES (?)", name)
+        return email
 
     def groups(self) -> dict[str, list[str]]:
         result: dict[str, list[str]] = {}
@@ -222,6 +225,7 @@ class Accounts:
         """Replace a group's members; an empty list deletes the group."""
         if not GROUP.fullmatch(name) or not isinstance(members, list):
             raise BrainfoldError("invalid_group", "The group name or its members are not valid.")
+        members = [m.strip().lower() if isinstance(m, str) else m for m in members]
         with self._lock:
             if self._run("SELECT 1 FROM retired_groups WHERE name = ?", name):
                 # Old revisions name this group; new members must not inherit its history.
@@ -280,6 +284,7 @@ class Accounts:
     def reset(self, email: str) -> str:
         """A one-time link token to choose a new password; the old one works until then."""
         token = secrets.token_urlsafe(32)
+        email = email.strip().lower()
         with self._lock:
             if not self._run("SELECT 1 FROM users WHERE email = ?", email):
                 raise BrainfoldError("unavailable", "There is no account with that email.")
