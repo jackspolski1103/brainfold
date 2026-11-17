@@ -48,13 +48,12 @@
 
 ### Findings of the 2026-11-17 Deepsec scan left open
 
-**What:** Three of the fourteen findings are not fixed; the rest are, with regressions in `tests/test_regression_deepsec_20261117.py` and `web/markdown.check.cjs`.
+**What:** Two of the fourteen findings are not fixed; the rest are, with regressions in `tests/test_regression_deepsec_20261117.py` and `web/markdown.check.cjs`.
 
-- Changing a password ends the other panel sessions but keeps the account's harness tokens, while a reset link removes them. A product decision for the author: remove them too, or keep them and say so in the panel.
 - The activity log is read 1000 rows at most, with no way to reach older ones and no retention. Failed logins no longer flood it (unknown emails and throttled attempts are not recorded), but the panel still cannot page back.
 - The author of a learning comes from the file's own text, so whoever can write a LEARNINGS.md can sign an entry with any name (`list_learnings` says attribution is advisory; `history` has the real author). The panel now only shows a byline for a plain date and name.
 
-**Why:** The first changes what members experience, the second needs a paging design in the panel, the third follows from write permission on a file.
+**Why:** The first needs a paging design in the panel, the second follows from write permission on a file.
 
 **Context:** Scan output in `.deepsec/` (run 20261117134953-34a6f2fe41a91785). The quadratic `list` is under "Throughput under one lock". `npm test` in `web/` runs the markdown check; CI does not run it yet.
 

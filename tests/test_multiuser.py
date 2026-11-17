@@ -690,14 +690,15 @@ def test_one_token_or_one_session_can_end_without_touching_the_others(
     assert phone.panel.post("/api/logout", json={}).status_code == 200
     assert phone.tree().status_code == 401
     assert laptop.tree().status_code == 200 and alice.tree().status_code == 200
-    # Changing the password signs out every other browser; harness tokens are not sessions.
+    # Changing the password signs out every other browser and revokes the harness tokens:
+    # whoever held the old password may have created one (decision 0015).
     changed = laptop.panel.post(
         "/api/password", json={"current": PASSWORD, "new": "a-new-password"}
     )
     assert changed.status_code == 200
     assert laptop.tree().status_code == 200
     assert alice.tree().status_code == 401
-    assert alice.tool("list")[0] == "ok"
+    assert alice.tool("list")[0] == "unauthenticated"
     visitor = httpx.Client(base_url=team.base)
     assert code(visitor.post("/api/login", json={"email": ALICE, "password": PASSWORD})) == (
         "invalid_credentials"
