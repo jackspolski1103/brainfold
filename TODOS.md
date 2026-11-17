@@ -46,13 +46,28 @@
 **Effort:** S (human) / S (CC)
 **Priority:** P3
 
+### Findings of the 2026-11-17 Deepsec scan left open
+
+**What:** Three of the fourteen findings are not fixed; the rest are, with regressions in `tests/test_regression_deepsec_20261117.py` and `web/markdown.check.cjs`.
+
+- Changing a password ends the other panel sessions but keeps the account's harness tokens, while a reset link removes them. A product decision for the author: remove them too, or keep them and say so in the panel.
+- The activity log is read 1000 rows at most, with no way to reach older ones and no retention. Failed logins no longer flood it (unknown emails and throttled attempts are not recorded), but the panel still cannot page back.
+- The author of a learning comes from the file's own text, so whoever can write a LEARNINGS.md can sign an entry with any name (`list_learnings` says attribution is advisory; `history` has the real author). The panel now only shows a byline for a plain date and name.
+
+**Why:** The first changes what members experience, the second needs a paging design in the panel, the third follows from write permission on a file.
+
+**Context:** Scan output in `.deepsec/` (run 20261117134953-34a6f2fe41a91785). The quadratic `list` is under "Throughput under one lock". `npm test` in `web/` runs the markdown check; CI does not run it yet.
+
+**Effort:** S (human) / S (CC)
+**Priority:** P2
+
 ### Throughput under one lock
 
 **What:** Decide how far to take concurrency: reads wait behind writes because one lock serializes everything, and `search`, `use_skill`, `tools/list` and `/api/skills` walk the readable tree under it.
 
 **Why:** Measured on 2026-11-17 after fixing ISSUE-001: 27 agents get 19 calls/s and a read waits 1.2 s (p50); a search on a 3,000-file brain holds everyone for 2.4 s.
 
-**Context:** The ceilings are marked in the code (`ponytail:` comments in `brain.py`). Options: cache the skills listing per person until the brain changes; a read/write lock; a text index for search. An architecture decision for the author.
+**Context:** The ceilings are marked in the code (`ponytail:` comments in `brain.py`). The Deepsec scan of 2026-11-17 added one: `list` checks every child with `_real`, which lists the same folder again, so a folder of N entries costs N² directory reads under the lock. Options: cache the skills listing per person until the brain changes; a read/write lock; a text index for search. An architecture decision for the author.
 
 **Effort:** M (human) / S-M (CC)
 **Priority:** P2
