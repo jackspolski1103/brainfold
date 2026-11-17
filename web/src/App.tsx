@@ -10,7 +10,14 @@ import { Account, ActivityPage, Overview, Skills } from "./Pages";
 import { Badge, Button, Field, Input, Menu, Notice, cx, menuItem } from "./ui";
 
 function useRoute(): string {
-  const read = () => decodeURI(location.hash.slice(1)) || "/";
+  const read = () => {
+    const raw = location.hash.slice(1);
+    try {
+      return decodeURI(raw) || "/";
+    } catch {
+      return raw; // a malformed escape, as in `#%`: no page matches, instead of a blank panel
+    }
+  };
   const [route, setRoute] = useState(read);
   useEffect(() => {
     const onChange = () => setRoute(read());
@@ -237,7 +244,7 @@ function Panel({ user, route, onSignOut }: { user: User; route: string; onSignOu
             {is("/connect")(path) && <Connect />}
             {is("/account")(path) && <Account user={user} />}
             {admin && is("/access")(path) && <AccessPage />}
-            {admin && is("/members")(path) && <Members self={user.email} tab={path === "/members/groups" ? "groups" : "users"} />}
+            {admin && is("/members")(path) && <Members self={user.email} tab={path === "/members/groups" ? "groups" : "users"} inviting={route.endsWith("?invite")} />}
             {admin && is("/activity")(path) && <ActivityPage />}
           </div>
         </main>

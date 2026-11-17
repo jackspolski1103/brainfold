@@ -104,11 +104,10 @@ function GroupDialog({ group, members, groups, onClose, onSaved }: { group: stri
   );
 }
 
-export function Members({ self, tab }: { self: string; tab: "users" | "groups" }) {
+export function Members({ self, tab, inviting }: { self: string; tab: "users" | "groups"; inviting: boolean }) {
   const [members, setMembers] = useState<Member[]>([]);
   const [groups, setGroups] = useState<Groups>({});
   const [filter, setFilter] = useState("");
-  const [inviting, setInviting] = useState(location.hash.endsWith("?invite"));
   const [group, setGroup] = useState<string | null>(null);
   const [link, setLink] = useState<Link | null>(null);
   const [error, setError] = useState("");
@@ -165,7 +164,7 @@ export function Members({ self, tab }: { self: string; tab: "users" | "groups" }
             title="Users"
             docs="members"
             description="Invite people and manage their accounts. Each person connects their own harness with their own token."
-            action={<Button variant="primary" onClick={() => setInviting(true)}><UserPlus size={15} aria-hidden /> Invite</Button>}
+            action={<Button variant="primary" onClick={() => { location.hash = "#/members?invite"; }}><UserPlus size={15} aria-hidden /> Invite</Button>}
           >
             <SearchInput aria-label="Filter users" placeholder="Search users by email, role or group…" className="mb-4" value={filter} onChange={(event) => setFilter(event.target.value)} />
             <Table head={["Email", "Role", "Groups", "Status", ""]}>
@@ -235,7 +234,7 @@ export function Members({ self, tab }: { self: string; tab: "users" | "groups" }
           </Section>
         )}
       </div>
-      <InviteDialog open={inviting} onClose={() => setInviting(false)} onDone={setLink} />
+      <InviteDialog open={inviting} onClose={() => { location.hash = "#/members"; }} onDone={setLink} />
       <GroupDialog group={group} members={members} groups={groups} onClose={() => setGroup(null)} onSaved={() => void load()} />
     </>
   );
