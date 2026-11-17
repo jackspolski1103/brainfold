@@ -21,7 +21,8 @@ EMAIL = re.compile(r"[^@\s]+@[^@\s]+")
 GROUP = re.compile(r"[a-z0-9][a-z0-9_-]{0,62}")
 SESSION_SECONDS = 7 * 24 * 3600
 LINK_SECONDS = 7 * 24 * 3600  # an invite or reset link left unused
-MAX_FAILURES = 5
+MAX_FAILURES = 5  # wrong passwords for one account from one address
+MAX_ADDRESS_FAILURES = 20  # wrong passwords from one address, whatever accounts it names
 LOCK_SECONDS = 60
 
 SCHEMA = """
@@ -99,7 +100,7 @@ class Accounts:
     def __init__(self, path: Path | str) -> None:
         self._db = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
         self._lock = threading.RLock()
-        self._failures: dict[str, tuple[int, float]] = {}
+        self._failures: dict[tuple[str | None, str], tuple[int, float]] = {}
         applied = self._db.execute("PRAGMA user_version").fetchone()[0]
         for number, migration in enumerate(MIGRATIONS[applied:], applied + 1):
             self._db.executescript(migration)
@@ -164,24 +165,27 @@ class Accounts:
             ) from None
         return token
 
+    def _invited(self, invite: Any) -> str:
+        rows = self._run(
+            "SELECT email FROM users WHERE invite = ? AND invited > ?",
+            *(_digest(str(invite)), time.time() - LINK_SECONDS),
+        )
+        if not rows:
+            raise BrainfoldError(
+                "invalid_invite", "The link is not valid, has expired or was already used."
+            )
+        return rows[0][0]
+
     def accept(self, invite: Any, password: Any) -> str:
+        self._invited(invite)  # anonymous callers reach this: no hash without a valid link
         hashed = _password(password)
         with self._lock:
-            rows = self._run(
-                "SELECT email FROM users WHERE invite = ? AND invited > ?",
-                *(_digest(str(invite)), time.time() - LINK_SECONDS),
-            )
-            if not rows:
-                raise BrainfoldError(
-                    "invalid_invite", "The link is not valid, has expired or was already used."
-                )
-            self._run(
-                "UPDATE users SET password = ?, invite = NULL WHERE email = ?", hashed, rows[0][0]
-            )
+            email = self._invited(invite)
+            self._run("UPDATE users SET password = ?, invite = NULL WHERE email = ?", hashed, email)
             # A reset link also signs the account out everywhere and disconnects its
             # harnesses: whoever held the old password may have created a token with it.
-            self._run("DELETE FROM tokens WHERE email = ?", rows[0][0])
-        return rows[0][0]
+            self._run("DELETE FROM tokens WHERE email = ?", email)
+        return email
 
     def users(self) -> list[dict[str, Any]]:
         groups = self.groups()
@@ -201,7 +205,12 @@ class Accounts:
         """Returns the account's address as stored."""
         email = email.strip().lower()  # accounts are stored in lower case
         with self._lock:
-            admins = [row[0] for row in self._run("SELECT email FROM users WHERE role = 'admin'")]
+            admins = [  # a pending invitation cannot administer anything yet
+                row[0]
+                for row in self._run(
+                    "SELECT email FROM users WHERE role = 'admin' AND password IS NOT NULL"
+                )
+            ]
             if admins == [email]:
                 raise BrainfoldError("last_admin", "The only administrator cannot be removed.")
             if not self._run("SELECT 1 FROM users WHERE email = ?", email):
@@ -253,15 +262,25 @@ class Accounts:
         """`address` is the client's address: one attacker cannot lock an account for all."""
         email = str(email).strip().lower()
         failed = BrainfoldError("invalid_credentials", "Wrong email or password.")
-        key = f"{email}|{address}"
-        count, since = self._failures.get(key, (0, 0.0))
-        if count >= MAX_FAILURES and time.time() - since < LOCK_SECONDS:
-            raise BrainfoldError("too_many_attempts", "Too many attempts. Try again in a minute.")
+        # Two counters: naming a different email each time must not buy unlimited hashes.
+        limits = {(email, address): MAX_FAILURES, (None, address): MAX_ADDRESS_FAILURES}
+        now = time.time()
+        with self._lock:
+            # Counters idle for a lock period are dropped, so the table cannot grow forever.
+            self._failures = {
+                key: seen for key, seen in self._failures.items() if now - seen[1] < LOCK_SECONDS
+            }
+            if any(self._failures.get(key, (0, 0.0))[0] >= most for key, most in limits.items()):
+                raise BrainfoldError(
+                    "too_many_attempts", "Too many attempts. Try again in a minute."
+                )
         if not self._matches(email, password):
             # ponytail: per-process counter; move to the database when running replicas.
-            self._failures[key] = (count % MAX_FAILURES + 1, time.time())
+            with self._lock:
+                for key in limits:
+                    self._failures[key] = (self._failures.get(key, (0, 0.0))[0] + 1, time.time())
             raise failed
-        self._failures.pop(key, None)
+        self._failures.pop((email, address), None)
         return self.issue(email, "session", "panel", SESSION_SECONDS)[1]
 
     def _matches(self, email: str, password: Any) -> bool:

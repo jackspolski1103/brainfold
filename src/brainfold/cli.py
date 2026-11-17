@@ -80,7 +80,8 @@ def _put(source: Path, path: str, replace: bool) -> None:
     version = None
     if replace:
         try:
-            version = _request("GET", path).headers["ETag"].strip('"')
+            with _request("HEAD", path) as current:  # the version without the content
+                version = (current.headers["ETag"] or "").strip('"') or None
         except BrainfoldError as error:
             if error.code != "unavailable":
                 raise
@@ -181,13 +182,25 @@ def main(argv: list[str] | None = None) -> int:
         ssh = None
         if args.mirror and (key := os.environ.get("BRAINFOLD_MIRROR_KEY")):
             # The key lives next to the accounts database, never inside the brain.
-            text = key if key.startswith("-----BEGIN") else base64.b64decode(key).decode()
+            try:
+                text = key if key.startswith("-----BEGIN") else base64.b64decode(key).decode()
+            except ValueError:
+                raise BrainfoldError(
+                    "invalid_configuration", "BRAINFOLD_MIRROR_KEY is not PEM or base64."
+                ) from None
             key_file = Path(args.db).resolve().parent / "mirror_key"
-            key_file.write_text(text.strip() + "\n")
-            key_file.chmod(0o600)
+            # Private from the moment it exists, and never written through a link.
+            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW
+            with os.fdopen(os.open(key_file, flags, 0o600), "w") as out:
+                out.write(text.strip() + "\n")
+            key_file.chmod(0o600)  # a file left by an older version
             hosts = key_file.with_name("mirror_known_hosts")
+            checking = "accept-new"  # trusts whoever answers the first connection
+            if pinned := os.environ.get("BRAINFOLD_MIRROR_HOST_KEY"):
+                hosts.write_text(pinned.strip() + "\n")
+                checking = "yes"
             ssh = (
-                f"ssh -i {key_file} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new "
+                f"ssh -i {key_file} -o IdentitiesOnly=yes -o StrictHostKeyChecking={checking} "
                 f"-o UserKnownHostsFile={hosts}"
             )
         app = create_app(

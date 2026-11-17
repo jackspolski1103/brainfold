@@ -31,6 +31,8 @@ BRAINFOLD_MIRROR=git@github.com:your-org/brain-backup.git
 BRAINFOLD_MIRROR_KEY=<contents of the brainfold-mirror file>
 ```
 
+   To be sure the server only ever talks to the real git server, also give it that server's host key as a `known_hosts` line, in `BRAINFOLD_MIRROR_HOST_KEY`. Git hosts publish theirs; `ssh-keyscan github.com` prints it, to compare against the published one. Without it the server trusts whichever key answers its first connection.
+
 5. Restart the server and check the mirror state on the **Overview** page or in `/api/health`.
 
 The mirror is configured by whoever deploys the server. It cannot be changed from this panel.
