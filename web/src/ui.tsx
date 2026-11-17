@@ -338,6 +338,7 @@ export function Code({ text, title }: { text: string; title?: string }) {
 }
 
 const escape = (text: string) => text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+const escapeText = (text: string) => escape(text).replace(/&#38;(#?\w+;)/g, "&$1"); // `&amp;` stays an entity
 export const slug = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 /** Markdown written by people and agents is untrusted: raw HTML is shown as text,
@@ -348,6 +349,10 @@ function renderer(link: (href: string) => string) {
     renderer: {
       html: ({ text }) => (/^\s*<!--[\s\S]*-->\s*$/.test(text) ? "" : escape(text)),
       image: ({ text }) => escape(text),
+      // marked passes text through as it is after an inline <kbd>, <code>, <pre> or <script>.
+      text(token) {
+        return "tokens" in token && token.tokens ? this.parser.parseInline(token.tokens) : escapeText(token.text);
+      },
       heading({ tokens, depth }) {
         const inner = this.parser.parseInline(tokens);
         return `<h${depth} id="${slug(inner.replace(/<[^>]+>/g, ""))}">${inner}</h${depth}>`;
