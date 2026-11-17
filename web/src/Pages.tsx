@@ -40,7 +40,8 @@ export function Overview({ user }: { user: User }) {
     tree("/").then(setRoot, quiet);
     api<{ tokens: Token[] }>("GET", "/api/tokens").then((result) => setTokens(result.tokens), quiet);
     api<{ skills: Skill[] }>("GET", "/api/skills").then((result) => setSkills(result.skills), quiet);
-    api<Health>("GET", "/api/health").then(setHealth, quiet);
+    // Not through `api`: a failing database answers 503, and that report is the one to show.
+    fetch("/api/health").then((response) => response.json()).then(setHealth, quiet);
     if (!admin) return;
     api<{ users: Member[] }>("GET", "/api/users").then((result) => setMembers(result.users), quiet);
     api<{ groups: Record<string, string[]> }>("GET", "/api/groups").then((result) => setGroups(result.groups), quiet);
