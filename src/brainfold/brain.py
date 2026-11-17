@@ -971,13 +971,14 @@ class Brain:
                 f"{quoted(name)} = {quoted(about)}\n" for name, about in files.items()
             )
         try:
+            data = text.encode("utf-8")  # before anything is created: JSON can carry non-text
             if tomllib.loads(text) != meta:
                 raise ValueError
         except ValueError:
             raise BrainfoldError("invalid_metadata", "The description is not valid.") from None
         target.mkdir(parents=True, exist_ok=True)
         self._baseline(target / ".brainfold.toml")
-        self._store(target / ".brainfold.toml", text.encode("utf-8"))
+        self._store(target / ".brainfold.toml", data)
         path = self._path(target)
         versioned = self._commit(who, f"describe {path}", target / ".brainfold.toml")
         return {"path": path, "versioned": versioned}
