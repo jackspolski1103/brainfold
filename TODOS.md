@@ -26,6 +26,38 @@
 **Priority:** P3
 **Depends on:** Phase 2 binary files and cross-machine exposure.
 
+### Low-severity findings of the 2026-11-17 QA
+
+**What:** Eight low findings left open by /qa on 2026-11-17 (ISSUE-008 to ISSUE-015).
+
+- ISSUE-008 (CLI): a malformed `~/.config/brainfold/config.toml`, and `reset-password --db` pointing at a file that is not a database, print a Python traceback. Repro: `printf 'x [[[' > config.toml; brainfold get /a ./a`.
+- ISSUE-009 (API): `PUT /api/folder` accepts `read` or `write` given as a string (`"*"`) instead of a list.
+- ISSUE-010 (server): an accounts database locked by another process for more than 5 s answers HTTP 500 instead of a classified error. Repro: `BEGIN EXCLUSIVE` from `sqlite3`, then any call.
+- ISSUE-011 (MCP): `write` accepts a NUL character; the file then counts as binary and cannot be read or edited over MCP.
+- ISSUE-012 (MCP): `read` with a negative `limit` drops the last line without saying so.
+- ISSUE-013 (MCP): `move` that changes only the capitals of a name answers `unavailable`.
+- ISSUE-014 (panel): "1 tokens" on the overview; "500 events in 24 h" when the list is capped at 500; on a phone the search results need horizontal scrolling to show the text.
+- ISSUE-015 (MCP): two skills with the same front-matter `name` make `use_skill` by that name answer "not available" instead of naming the ambiguity.
+
+**Why:** None loses data or crosses a permission; each is a rough edge an agent or a person meets.
+
+**Context:** Report in `.gstack/qa-reports/run-20261117T131822Z/`. Still to run from that QA: Codex model-driven tool calls (blocked by an account usage limit on the day) and `docker compose` behind Caddy.
+
+**Effort:** S (human) / S (CC)
+**Priority:** P3
+
+### Throughput under one lock
+
+**What:** Decide how far to take concurrency: reads wait behind writes because one lock serializes everything, and `search`, `use_skill`, `tools/list` and `/api/skills` walk the readable tree under it.
+
+**Why:** Measured on 2026-11-17 after fixing ISSUE-001: 27 agents get 19 calls/s and a read waits 1.2 s (p50); a search on a 3,000-file brain holds everyone for 2.4 s.
+
+**Context:** The ceilings are marked in the code (`ponytail:` comments in `brain.py`). Options: cache the skills listing per person until the brain changes; a read/write lock; a text index for search. An architecture decision for the author.
+
+**Effort:** M (human) / S-M (CC)
+**Priority:** P2
+
 ## Completed
 
 - QA low-severity findings ISSUE-005 to ISSUE-009 (new-group form, administrators-only notice, link to the personal folder, reading a folder, busy port) and the dark mode check. Fixed on main, 2026-11-12, after /qa.
+- QA findings ISSUE-001 to ISSUE-007 of 2026-11-17 (per-request tree walk, uploads removed by another caller's error, unbounded JSON bodies, cut lines, non-text descriptions, capitals in emails, CLI paths). Fixed by /qa on qa-fixes-2026-11-17, 2026-11-17.
