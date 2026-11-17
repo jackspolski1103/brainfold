@@ -138,3 +138,18 @@ def test_a_line_too_long_for_one_read_says_it_was_cut_and_how_to_get_it_whole(
     assert "Line 2" in cut["note"] and cut["fetch"].startswith("brainfold get ")
     last = brain.read(ALICE, path, cut["next_offset"])
     assert last["content"] == "last\n" and not last["truncated"] and "note" not in last
+
+
+# Regression: ISSUE-005 — a description that is not valid text (a lone surrogate, which JSON
+# can carry) escaped as a raw Python error, and create_folder left the folder behind
+# without its metadata.
+# Found by /qa on 2026-11-17
+# Report: .gstack/qa-reports/run-20261117T131822Z/qa-report-brainfold-2026-11-17.md
+def test_a_description_that_is_not_valid_text_is_refused_and_leaves_nothing(brain: Brain) -> None:
+    assert code(brain.create_folder, ALICE, "/projects/costs/new", "\ud800") == "invalid_metadata"
+    assert not (brain.root / "projects" / "costs" / "new").exists()
+    assert code(brain.describe_folder, ALICE, "/projects/costs", "\ud800") == "invalid_metadata"
+    assert code(brain.describe_file, ALICE, "/projects/costs/process.md", "\ud800") == (
+        "invalid_metadata"
+    )
+    assert brain.list(ALICE, "/projects/costs")["description"].startswith("Process")
