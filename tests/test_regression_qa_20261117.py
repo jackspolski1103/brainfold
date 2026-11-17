@@ -153,3 +153,21 @@ def test_a_description_that_is_not_valid_text_is_refused_and_leaves_nothing(brai
         "invalid_metadata"
     )
     assert brain.list(ALICE, "/projects/costs")["description"].startswith("Process")
+
+
+# Regression: ISSUE-006 — folder grants reached an account whatever its capitals, but a
+# group member, a removal or a reset typed with capitals answered "no account".
+# Found by /qa on 2026-11-17
+# Report: .gstack/qa-reports/run-20261117T131822Z/qa-report-brainfold-2026-11-17.md
+def test_administration_reaches_an_account_whatever_the_capitals(tmp_path: Path) -> None:
+    (tmp_path / "brain").mkdir()
+    app = create_app(tmp_path / "brain", tmp_path / "brainfold.db", git=False)
+    admin = TestClient(app)
+    admin.post("/api/setup", json={"email": ALICE, "password": PASSWORD})
+    invite = admin.post("/api/users", json={"email": "bob@atlas.test"}).json()["invite"]
+    TestClient(app).post("/api/accept", json={"invite": invite, "password": PASSWORD})
+    grouped = admin.put("/api/groups/costs", json={"members": ["Bob@Atlas.test "]})
+    assert grouped.status_code == 200 and grouped.json()["groups"] == {"costs": ["bob@atlas.test"]}
+    assert admin.post("/api/users/BOB@atlas.test/reset", json={}).status_code == 200
+    assert admin.delete("/api/users/Bob@Atlas.Test").status_code == 200
+    assert [user["email"] for user in admin.get("/api/users").json()["users"]] == [ALICE]
