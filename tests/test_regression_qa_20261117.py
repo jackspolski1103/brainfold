@@ -120,3 +120,21 @@ def test_the_json_api_refuses_a_body_larger_than_it_could_ever_need(tmp_path: Pa
     assert refused.status_code == 413 and refused.json()["error"]["code"] == "file_too_large"
     setup = client.post("/api/setup", json={"email": ALICE, "password": PASSWORD})
     assert setup.status_code == 200  # ordinary requests are untouched
+
+
+# Regression: ISSUE-004 — a line longer than one read (64 KB) was cut, and continuing from
+# `next_offset` skipped the rest of it without a word: the agent believed it had read it.
+# Found by /qa on 2026-11-17
+# Report: .gstack/qa-reports/run-20261117T131822Z/qa-report-brainfold-2026-11-17.md
+def test_a_line_too_long_for_one_read_says_it_was_cut_and_how_to_get_it_whole(
+    brain: Brain,
+) -> None:
+    path = "/projects/costs/wide.md"
+    brain.write(ALICE, path, "first\n" + "x" * 100_000 + "\nlast\n")
+    first = brain.read(ALICE, path)
+    assert first["content"] == "first\n" and first["truncated"] and "note" not in first
+    cut = brain.read(ALICE, path, first["next_offset"])
+    assert len(cut["content"]) == 65_536 and cut["truncated"]
+    assert "Line 2" in cut["note"] and cut["fetch"].startswith("brainfold get ")
+    last = brain.read(ALICE, path, cut["next_offset"])
+    assert last["content"] == "last\n" and not last["truncated"] and "note" not in last

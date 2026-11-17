@@ -531,12 +531,10 @@ class Brain:
         """Text comes back in line ranges of at most 64 KB; `version` covers the whole file."""
         _, data = self._bytes(who, path)
         result: dict[str, Any] = {"path": path, "version": _version(data), "size": len(data)}
+        # Quoted: the name was chosen by whoever stored the file.
+        fetch = shlex.join(["brainfold", "get", path, f"./{path.rsplit('/', 1)[-1]}"])
         if len(data) > MAX_TEXT_BYTES or not _is_text(data):
-            return result | {
-                "kind": "binary",
-                # Quoted: the name was chosen by whoever stored the file.
-                "fetch": shlex.join(["brainfold", "get", path, f"./{path.rsplit('/', 1)[-1]}"]),
-            }
+            return result | {"kind": "binary", "fetch": fetch}
         lines = data.decode("utf-8").splitlines(keepends=True)
         start = max(0, offset)
         chosen: list[str] = []
@@ -553,12 +551,19 @@ class Brain:
             chosen.append(line)
             used += len(encoded)
         end = start + len(chosen)
-        return result | {
+        result |= {
             "kind": "text",
             "content": "".join(chosen),
             "next_offset": end,
             "truncated": end < len(lines) or cut,
         }
+        if cut:  # offsets are lines, so the rest of this one cannot be asked for
+            result |= {
+                "note": f"Line {end} is longer than one read and was cut; next_offset skips "
+                "the rest of it. Get the whole file with the fetch command.",
+                "fetch": fetch,
+            }
+        return result
 
     def _readable(self, who: str) -> list[str]:
         """Every file the caller can read; nothing if they cannot even read the root."""

@@ -188,7 +188,8 @@ def create_app(
     ) -> dict[str, Any]:
         """Read a text file. Returns its `version`, needed to replace, move or delete it.
         Long files come in parts: when `truncated` is true, continue from `next_offset` (a
-        line number). `version` identifies the content, so it stays the same across a move;
+        line number). A single line longer than one read is cut and says so in `note`.
+        `version` identifies the content, so it stays the same across a move;
         `versioned: true` in an answer means the change is in the history. A file that
         is not text (a PDF, a spreadsheet) returns no content but a `fetch` command for the
         brainfold command line, which saves it to disk."""
