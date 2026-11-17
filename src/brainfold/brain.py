@@ -34,6 +34,7 @@ from brainfold import BrainfoldError
 GRANT = re.compile(r"\*|@[a-z0-9][a-z0-9_-]{0,62}|[^@\s]+@[^@\s]+")
 MAX_PATH_BYTES = 1024
 MAX_DEPTH = 32
+MAX_NAME_BYTES = 240  # leaves room for the temporary name a write gives the file
 PAGE = 256  # entries per listing page
 MAX_READ_BYTES = 65_536  # text returned by one read call
 MAX_TEXT_BYTES = 1_048_576  # text file size writable and searchable over MCP
@@ -66,7 +67,8 @@ def _canonical(path: str) -> bool:
         return True
     parts = path[1:].split("/")
     return len(parts) <= MAX_DEPTH and all(
-        part not in {"", ".", ".."} and len(part.encode("utf-8")) <= 255 for part in parts
+        part not in {"", ".", ".."} and len(part.encode("utf-8")) <= MAX_NAME_BYTES
+        for part in parts
     )
 
 
@@ -115,7 +117,7 @@ def _locked(method: Callable[..., Any]) -> Callable[..., Any]:
             try:
                 return method(self, *args, **kwargs)
             except OSError:
-                self._clean()
+                self._clean(uploads=False)
                 raise BrainfoldError("storage_error", "Storage failed. Try again later.") from None
 
     return wrapper
@@ -147,7 +149,7 @@ class Brain:
         # ponytail: one lock for reads and writes; split when read throughput matters.
         self._lock = threading.RLock()
         self.unversioned = 0  # writes since start that git did not record
-        self._clean()
+        self._clean(uploads=True)
         self.git = git and self._start_git()
         if self.mirror and self.git:
             self.mirror_state = "pending"
@@ -409,9 +411,13 @@ class Brain:
             if not rows or rows[-1]["version"] != current:
                 self._record("brainfold", [(target, "baseline", current, self._snapshot(target))])
 
-    def _clean(self) -> None:
+    def _clean(self, uploads: bool) -> None:
+        """Remove leftover temporary files. Uploads are received outside the lock, so
+        while the server runs theirs belong to requests still in flight: only a start
+        removes them."""
         for leftover in self.root.rglob(".*.brainfold-tmp"):
-            if ".git" not in leftover.parts:
+            in_flight = leftover.name.startswith(".upload-") and not uploads
+            if ".git" not in leftover.parts and not in_flight:
                 leftover.unlink(missing_ok=True)
 
     def _fresh(self, target: Path) -> dict[str, Any]:
