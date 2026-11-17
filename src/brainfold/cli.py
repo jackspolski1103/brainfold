@@ -56,6 +56,8 @@ def _connection() -> tuple[str, str]:
 
 def _request(method: str, path: str, data: bytes | None = None, version: str | None = None):
     url, token = _connection()
+    if not path.startswith("/"):  # the MCP tools accept this form too
+        path = f"/{path}"
     headers = {"Authorization": f"Bearer {token}"}
     if version:
         headers["If-Match"] = f'"{version}"'

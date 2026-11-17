@@ -16,6 +16,7 @@ from team import serving
 
 from brainfold import BrainfoldError
 from brainfold.brain import Brain
+from brainfold.cli import main
 from brainfold.server import create_app
 
 EXAMPLE = Path(__file__).parent.parent / "examples" / "brain"
@@ -171,3 +172,20 @@ def test_administration_reaches_an_account_whatever_the_capitals(tmp_path: Path)
     assert admin.post("/api/users/BOB@atlas.test/reset", json={}).status_code == 200
     assert admin.delete("/api/users/Bob@Atlas.Test").status_code == 200
     assert [user["email"] for user in admin.get("/api/users").json()["users"]] == [ALICE]
+
+
+# Regression: ISSUE-007 — `brainfold put` and `get` with a path that lacks the leading
+# slash, which every MCP tool accepts, answered "The server answered 404."
+# Found by /qa on 2026-11-17
+# Report: .gstack/qa-reports/run-20261117T131822Z/qa-report-brainfold-2026-11-17.md
+def test_the_command_line_accepts_a_path_without_the_leading_slash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "local.bin").write_bytes(b"\x00\x01")
+    with serving(tmp_path / "brain", tmp_path / "brainfold.db") as team:
+        monkeypatch.setenv("BRAINFOLD_URL", team.base)
+        monkeypatch.setenv("BRAINFOLD_TOKEN", team.admin.token)
+        home = team.admin.tool("list", path="/")[1]["home"]
+        assert main(["put", str(tmp_path / "local.bin"), f"{home[1:]}/file.bin"]) == 0
+        assert main(["get", f"{home[1:]}/file.bin", str(tmp_path / "back.bin")]) == 0
+    assert (tmp_path / "back.bin").read_bytes() == b"\x00\x01"
