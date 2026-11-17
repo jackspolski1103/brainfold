@@ -35,6 +35,7 @@ STATUS = {
     "file_too_large": 413,
 }
 SKILLS_IN_INSTRUCTIONS = 12
+SESSION_START_BYTES = 65_536  # an `initialize` request is far smaller; larger bodies are writes
 
 INSTRUCTIONS = (
     "Shared brain of the organization: folders and files with permissions. Start with "
@@ -203,9 +204,10 @@ def create_app(
 
         def work(who: str) -> dict[str, Any]:
             result = brain.write(who, path, content, version)
-            for name, skill in skills_for(who).items():
-                if skill.get("path") == result["path"]:
-                    result["skill"] = name
+            if result["path"].endswith("/SKILL.md"):  # only then is the tree worth walking
+                for name, skill in skills_for(who).items():
+                    if skill.get("path") == result["path"]:
+                        result["skill"] = name
             return result
 
         return await tool(ctx, "write", path, work)
@@ -356,12 +358,15 @@ def create_app(
 
     server._mcp_server.list_tools()(list_tools)
 
-    bearer: contextvars.ContextVar[str | None] = contextvars.ContextVar("bearer", default=None)
+    # Stateless HTTP builds these options for every request, but only the answer to
+    # `initialize` carries them: `with_skills` lists the skills for that request alone.
+    session_skills: contextvars.ContextVar[list[str] | None] = contextvars.ContextVar(
+        "session_skills", default=None
+    )
     base_options = server._mcp_server.create_initialization_options
 
     def initialization_options(*args: Any, **kwargs: Any) -> Any:
-        # ponytail: walks the readable tree on the event loop at session start.
-        lines = listing(bearer.get())
+        lines = session_skills.get() or []
         shown = "\n".join(lines[:SKILLS_IN_INSTRUCTIONS]) or "(none)"
         extra = len(lines) - SKILLS_IN_INSTRUCTIONS
         more = f"\n(and {extra} more: see the use_skill tool description)" if extra > 0 else ""
@@ -624,13 +629,33 @@ def create_app(
     app.state.setup_code = setup_code
     mcp_asgi = app.router.routes[0].app  # the /mcp endpoint registered by FastMCP
 
-    async def with_bearer(scope: Any, receive: Any, send: Any) -> None:
+    async def with_skills(scope: Any, receive: Any, send: Any) -> None:
+        """List the caller's skills only for the request that starts a session, and in a
+        worker thread: the listing walks every folder the caller can read."""
         headers = dict(scope.get("headers") or [])
         scheme, _, token = headers.get(b"authorization", b"").decode("latin-1").partition(" ")
-        bearer.set(token if scheme.lower() == "bearer" and token else None)
-        await mcp_asgi(scope, receive, send)
+        size = headers.get(b"content-length", b"").decode("latin-1")
+        receive_body, lines = receive, None
+        if scheme.lower() == "bearer" and token and scope.get("method") == "POST":
+            starts = not size.isdigit()  # no declared length: assume it may start a session
+            if size.isdigit() and int(size) <= SESSION_START_BYTES:
+                body, more = b"", True
+                while more:
+                    message = await receive()
+                    body += message.get("body", b"")
+                    more = message["type"] == "http.request" and message.get("more_body", False)
+                buffered = [{"type": "http.request", "body": body, "more_body": False}]
 
-    app.router.routes[0].app = with_bearer
+                async def receive_body() -> Any:
+                    return buffered.pop() if buffered else await receive()
+
+                starts = b'"initialize"' in body
+            if starts:
+                lines = await anyio.to_thread.run_sync(listing, token)
+        session_skills.set(lines)
+        await mcp_asgi(scope, receive_body, send)
+
+    app.router.routes[0].app = with_skills
     app.router.routes.extend(
         [
             Route("/files/{path:path}", files, methods=["GET", "PUT"]),
