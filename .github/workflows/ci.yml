@@ -5,6 +5,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # the suite takes two; a hang must not hold a runner for an hour
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
