@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "esbuild src/ui.tsx --bundle --platform=node --format=cjs --external:react --external:react-dom --log-level=error --outfile=node_modules/.cache/ui.cjs && node markdown.check.cjs"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",

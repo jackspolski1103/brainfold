@@ -95,7 +95,8 @@ const resolver = (file: string) => (href: string) => {
 };
 
 // The stamp the server puts before each entry appended to a LEARNINGS.md.
-const STAMP = /<!-- brainfold:learning (\S+) (\S+) -->/g;
+// Anyone who can write the file can write one too, so only a plain date and name become a byline.
+const STAMP = /<!-- brainfold:learning (\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ) ([^\s()[\]<>*`]+) -->/g;
 
 function FileCard({ file }: { file: FileView }) {
   const markdown = file.kind === "text" && /\.(md|markdown)$/i.test(file.path);
