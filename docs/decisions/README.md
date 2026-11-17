@@ -13,6 +13,7 @@ Decisions are recorded when the author confirms them. A later change keeps the h
 | [0012 License and repository](0012-license-and-repository.md) | Accepted |
 | [0013 Panel design and documentation site](0013-panel-design-and-documentation.md) | Accepted |
 | [0014 Files in the panel](0014-files-in-the-panel.md) | Accepted |
+| [0015 A password change revokes harness tokens](0015-password-change-revokes-tokens.md) | Accepted |
 
 ## Pending
 

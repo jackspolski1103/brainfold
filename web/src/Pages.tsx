@@ -198,7 +198,7 @@ export function Account({ user }: { user: User }) {
       await api("POST", "/api/password", { current, new: next });
       setCurrent("");
       setNext("");
-      setResult({ ok: true, text: "Password changed. Your other sessions were signed out." });
+      setResult({ ok: true, text: "Password changed. Your other sessions were signed out and your harness tokens revoked: create new ones in Connect." });
     } catch (failure) {
       setResult({ ok: false, text: message(failure) });
     }
@@ -217,7 +217,7 @@ export function Account({ user }: { user: User }) {
             <dd>{user.role === "admin" ? <Badge tone="accent">Administrator</Badge> : <Badge>Member</Badge>}</dd>
           </dl>
         </Section>
-        <Section title="Password" description="Changing it signs out your other sessions. Tokens keep working.">
+        <Section title="Password" description="Changing it signs out your other sessions and revokes your harness tokens.">
           <form onSubmit={change} className="space-y-4">
             <Field label="Current password">
               <Input type="password" autoComplete="current-password" required value={current} onChange={(event) => setCurrent(event.target.value)} />

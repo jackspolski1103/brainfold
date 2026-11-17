@@ -23,7 +23,7 @@ A group is a name for several people. Granting a folder to `@finance` grants it 
 
 ## Passwords
 
-- Each person changes their own password in **Account**; other sessions are signed out.
+- Each person changes their own password in **Account**; other sessions are signed out and **every harness token** of that account is revoked, so the person creates new tokens in **Connect**.
 - An administrator can **reset** a member's password: this creates a one-time link that works for 7 days, and the current password keeps working until the link is used. Using it ends every session and **revokes every harness token** of that account, so the person creates new tokens in **Connect**. Use it when an account may be compromised.
 - After five failed sign-ins, an email is locked from that address for one minute.
 

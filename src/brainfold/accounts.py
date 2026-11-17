@@ -291,12 +291,13 @@ class Accounts:
         return bool(expected) and hmac.compare_digest(supplied, expected)
 
     def change_password(self, email: str, current: Any, new: Any, keep: str | None) -> None:
-        """Set a new password and end every other panel session of that account."""
+        """Set a new password, end every other panel session of that account and revoke its
+        harness tokens: whoever held the old password may have created one with it."""
         if not self._matches(email, current):
             raise BrainfoldError("invalid_credentials", "The current password is wrong.")
         self._run("UPDATE users SET password = ? WHERE email = ?", _password(new), email)
         self._run(
-            "DELETE FROM tokens WHERE email = ? AND kind = 'session' AND digest != ?",
+            "DELETE FROM tokens WHERE email = ? AND digest != ?",
             *(email, _digest(keep or "")),
         )
 
