@@ -11,10 +11,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from starlette.testclient import TestClient
 from team import serving
 
 from brainfold import BrainfoldError
 from brainfold.brain import Brain
+from brainfold.server import create_app
 
 EXAMPLE = Path(__file__).parent.parent / "examples" / "brain"
 ALICE, PASSWORD = "alice@atlas.test", "a-long-password"
@@ -103,3 +105,18 @@ def test_a_storage_error_of_one_caller_never_removes_another_upload_in_flight(
     monkeypatch.undo()
     Brain(brain.root, brain.groups)  # a restart still clears what a crash left behind
     assert not upload.exists()
+
+
+# Regression: ISSUE-003 — the JSON API read a request body of any size into memory before
+# looking at it: an anonymous 200 MB POST to /api/login grew the server from 42 to 556 MB.
+# Found by /qa on 2026-11-17
+# Report: .gstack/qa-reports/run-20261117T131822Z/qa-report-brainfold-2026-11-17.md
+def test_the_json_api_refuses_a_body_larger_than_it_could_ever_need(tmp_path: Path) -> None:
+    (tmp_path / "brain").mkdir()
+    client = TestClient(create_app(tmp_path / "brain", tmp_path / "brainfold.db", git=False))
+    huge = b'{"email":"a@b.cd","password":"' + b"x" * 2_000_000 + b'"}'
+    headers = {"Content-Type": "application/json"}
+    refused = client.post("/api/login", content=huge, headers=headers)
+    assert refused.status_code == 413 and refused.json()["error"]["code"] == "file_too_large"
+    setup = client.post("/api/setup", json={"email": ALICE, "password": PASSWORD})
+    assert setup.status_code == 200  # ordinary requests are untouched

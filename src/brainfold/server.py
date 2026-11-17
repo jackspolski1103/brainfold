@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextvars
 import hmac
+import json
 import secrets
 import urllib.parse
 from collections.abc import Callable
@@ -35,6 +36,7 @@ STATUS = {
     "file_too_large": 413,
 }
 SKILLS_IN_INSTRUCTIONS = 12
+MAX_JSON_BYTES = 1_048_576  # body of a panel API request; files travel as binary bodies
 SESSION_START_BYTES = 65_536  # an `initialize` request is far smaller; larger bodies are writes
 
 INSTRUCTIONS = (
@@ -389,7 +391,13 @@ def create_app(
                     # DELETE is never a "simple" cross-site request, and cookies are SameSite.
                     if request.headers.get("content-type", "").split(";")[0] != "application/json":
                         raise ValueError
-                    body = await request.json()
+                    # Bounded before parsing: these routes answer anonymous callers too.
+                    data = b""
+                    async for chunk in request.stream():
+                        data += chunk
+                        if len(data) > MAX_JSON_BYTES:
+                            raise BrainfoldError("file_too_large", "The request is too large.")
+                    body = json.loads(data)
                     if not isinstance(body, dict):
                         raise ValueError
                 user = None if public else accounts.authenticate(_session(request), "session")
