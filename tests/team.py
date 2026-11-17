@@ -129,7 +129,10 @@ def serving(root: Path, database: Path) -> Iterator[Team]:
     listener = socket.socket()
     listener.bind(("127.0.0.1", 0))
     listener.listen(128)
-    server = uvicorn.Server(uvicorn.Config(app, log_level="critical", lifespan="on"))
+    # Idle connections stay open for the whole test: with uvicorn's 5 seconds, a slow
+    # machine closes a person's connection just as their next request reuses it.
+    config = uvicorn.Config(app, log_level="critical", lifespan="on", timeout_keep_alive=300)
+    server = uvicorn.Server(config)
     thread = threading.Thread(target=server.run, kwargs={"sockets": [listener]}, daemon=True)
     thread.start()
     deadline = time.time() + 10
