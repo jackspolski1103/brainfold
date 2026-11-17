@@ -6,6 +6,7 @@ import contextvars
 import hmac
 import json
 import secrets
+import traceback
 import urllib.parse
 from collections.abc import Callable
 from pathlib import Path
@@ -114,7 +115,11 @@ def create_app(
         except BrainfoldError as error:
             accounts.log(actor, action, path, False)
             if error.code == "write_denied":  # say who can change that
-                admins = [user["email"] for user in accounts.users() if user["role"] == "admin"]
+                admins = [
+                    user["email"]
+                    for user in accounts.users()
+                    if user["role"] == "admin" and not user["pending"]
+                ]
                 ask = f" Ask an administrator to grant it: {', '.join(admins[:3])}."
                 raise BrainfoldError(error.code, error.message + ask) from None
             raise
@@ -174,6 +179,10 @@ def create_app(
         except BrainfoldError as error:
             # The agent only receives the text of a failure, so the code travels in it.
             raise BrainfoldError(error.code, f"{error.code}: {error.message}") from None
+        except Exception:
+            # FastMCP would send the exception's text, which can name server paths.
+            traceback.print_exc()
+            raise BrainfoldError("internal_error", "internal_error: The server failed.") from None
 
     @server.tool(name="list")
     async def list_folder(ctx: Context, path: str = "/", offset: int = 0) -> dict[str, Any]:
@@ -469,8 +478,11 @@ def create_app(
         email = str(body["email"]).strip().lower()[:254]
         try:
             session = accounts.login(email, body["password"], address(request))
-        except BrainfoldError:
-            accounts.log(email, "login", "", False)
+        except BrainfoldError as error:
+            # Anonymous callers reach this: only a wrong password for a real account is
+            # recorded, so nobody can bury the activity log under invented emails.
+            if error.code == "invalid_credentials" and accounts.alias(email):
+                accounts.log(email, "login", "", False)
             raise
         accounts.log(email, "login", "", True)
         return signed_in(request, email, session)
@@ -699,7 +711,7 @@ def create_app(
         def panel(_request: Request) -> Response:
             headers = {
                 "Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; "
-                "frame-ancestors 'none'",
+                "frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'",
                 "X-Content-Type-Options": "nosniff",
                 "Cache-Control": "no-cache",
             }

@@ -11,6 +11,7 @@
 | `--public-url` | `BRAINFOLD_PUBLIC_URL` | | The HTTPS address people use. Required to listen beyond this machine. |
 | `--mirror` | `BRAINFOLD_MIRROR` | | A git remote that receives every change. |
 | | `BRAINFOLD_MIRROR_KEY` | | SSH private key for the mirror, as PEM or base64. |
+| | `BRAINFOLD_MIRROR_HOST_KEY` | | The mirror's SSH host key, as a `known_hosts` line. Without it the server trusts the key it meets on the first connection. |
 
 ## What a public URL changes
 
