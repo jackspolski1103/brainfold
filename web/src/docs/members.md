@@ -4,7 +4,7 @@
 
 | Role | Can do |
 | --- | --- |
-| Administrator | Invite and remove members, manage groups, set folder access, see activity |
+| Administrator | Invite and remove members, manage groups, set folder access, see activity. Groups and folder access also [from a harness](#/docs/connect) |
 | Member | Use what they were granted, manage their own tokens and password |
 
 The first account is an administrator. The last administrator cannot be removed.

@@ -30,7 +30,7 @@ export type FileView = {
   fetch?: string;
 };
 export type Member = { email: string; role: string; pending: boolean; groups: string[] };
-export type Token = { id: number; name: string; created: number; last_used: number | null };
+export type Token = { id: number; name: string; created: number; last_used: number | null; manage: boolean };
 export type Activity = {
   at: number;
   actor: string;

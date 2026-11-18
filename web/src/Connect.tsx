@@ -75,10 +75,11 @@ function Snippets({ token }: { token: string }) {
   );
 }
 
-export function Connect() {
+export function Connect({ admin }: { admin: boolean }) {
   const [tokens, setTokens] = useState<Token[] | null>(null);
   const [creating, setCreating] = useState(false);
   const [label, setLabel] = useState("");
+  const [manage, setManage] = useState(false);
   const [created, setCreated] = useState("");
   const [error, setError] = useState("");
   const load = useCallback(() => api<{ tokens: Token[] }>("GET", "/api/tokens").then((result) => setTokens(result.tokens), (failure) => setError(message(failure))), []);
@@ -87,8 +88,9 @@ export function Connect() {
   async function create(event: FormEvent) {
     event.preventDefault();
     try {
-      setCreated((await api<{ token: string }>("POST", "/api/tokens", { name: label })).token);
+      setCreated((await api<{ token: string }>("POST", "/api/tokens", { name: label, manage })).token);
       setLabel("");
+      setManage(false);
       setCreating(false);
       await load();
     } catch (failure) {
@@ -116,7 +118,7 @@ export function Connect() {
             <Table head={["Name", "Created", "Last used", ""]}>
               {(tokens ?? []).map((token) => (
                 <Tr key={token.id}>
-                  <Td><span className="font-medium">{token.name}</span></Td>
+                  <Td><span className="font-medium">{token.name}</span>{token.manage && <Badge>Manages access</Badge>}</Td>
                   <Td><span className="text-muted" title={when(token.created)}>{ago(token.created)}</span></Td>
                   <Td>{token.last_used ? <span className="text-muted" title={when(token.last_used)}>{ago(token.last_used)}</span> : <Badge>Never used</Badge>}</Td>
                   <Td className="w-px text-right">
@@ -138,6 +140,15 @@ export function Connect() {
           <Field label="Name">
             <Input required autoFocus maxLength={80} placeholder="Claude Code on my laptop" value={label} onChange={(event) => setLabel(event.target.value)} />
           </Field>
+          {admin && (
+            <label className="flex items-start gap-2.5 text-sm">
+              <input type="checkbox" className="mt-0.5" checked={manage} onChange={(event) => setManage(event.target.checked)} />
+              <span>
+                Can manage access and groups
+                <span className="block text-xs text-muted">Your agent can change who reads and writes each folder and edit groups. Leave it off for everyday tokens.</span>
+              </span>
+            </label>
+          )}
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setCreating(false)}>Cancel</Button>
             <Button type="submit" variant="primary">Create token</Button>

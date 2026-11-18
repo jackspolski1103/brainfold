@@ -14,6 +14,7 @@ Decisions are recorded when the author confirms them. A later change keeps the h
 | [0013 Panel design and documentation site](0013-panel-design-and-documentation.md) | Accepted |
 | [0014 Files in the panel](0014-files-in-the-panel.md) | Accepted |
 | [0015 A password change revokes harness tokens](0015-password-change-revokes-tokens.md) | Accepted |
+| [0016 Access and groups managed from a harness](0016-access-from-a-harness.md) | Accepted; replaces the 0010 rule that an agent never changes `read` or `write` |
 
 ## Pending
 
