@@ -10,6 +10,7 @@ import sqlite3
 import subprocess
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -236,7 +237,7 @@ def test_an_administrator_manages_every_folder_but_reads_only_what_was_granted(
     assert finance["read"] == ["@finance"] and finance["can_write"] is False
     # Names of files are structure; size, description and content are not.
     assert {"path": "/finance/budget.md", "kind": "file"} in finance["entries"]
-    # The harness of an administrator is an ordinary member: no manage mode over MCP.
+    # An ordinary token of an administrator is an ordinary member: no manage mode.
     assert admin.tool("list", path="/finance")[0] == "unavailable"
     assert "/finance" not in {e["path"] for e in admin.tool("list")[1]["entries"]}
     # Personal folders: an administrator sees that they exist and nothing else.
@@ -317,7 +318,7 @@ def test_members_and_strangers_cannot_use_any_administration_route(
     alice.panel.delete(f"/api/tokens/{theirs[0]['id']}")
     assert bob.tool("list")[0] == "ok"
     for row in alice.panel.get("/api/tokens").json()["tokens"]:
-        assert set(row) == {"id", "name", "created", "last_used"}  # never the token itself
+        assert set(row) == {"id", "name", "created", "last_used", "manage"}  # never the token
 
 
 def test_each_agent_is_offered_only_the_skills_its_person_can_read(
@@ -828,3 +829,59 @@ def test_administration_refuses_people_who_are_not_there(
     assert code(team.group("finance", ALICE, "ghost@atlas.test")) == "invalid_group"
     assert team.admin.panel.get("/api/groups").json()["groups"]["finance"] == [ALICE, BOB]
     assert team.admin.panel.delete("/api/users/ghost@atlas.test").status_code == 404
+
+
+def test_only_an_administrator_token_made_for_it_manages_access_from_a_harness(
+    team: Team, people: dict[str, Person]
+) -> None:
+    admin, alice, erin = team.admin, people[ALICE], people[ERIN]
+    calls: list[tuple[str, dict[str, Any]]] = [
+        ("get_access", {"path": "/finance"}),
+        ("set_access", {"path": "/finance", "read": ["*"], "write": ["*"]}),
+        ("set_group", {"name": "finance", "members": [ERIN]}),
+    ]
+    # A member cannot ask for such a token, and neither kind of ordinary token manages.
+    asked = erin.panel.post("/api/tokens", json={"name": "sneaky", "manage": True})
+    assert code(asked) == "forbidden"
+    for person in (erin, alice, admin):
+        for name, arguments in calls:
+            assert person.tool(name, **arguments)[0] == "forbidden"
+    assert "Connect a harness" in admin.tool("get_access")[1]  # says how to get one
+    assert not sees(erin, "/finance/budget.md")
+    assert (team.root / "finance/.brainfold.toml").read_text("utf-8").count("@finance") == 2
+
+    admin.connect("manager", manage=True)
+    seen = admin.tool("get_access", path="/finance")[1]
+    assert seen["read"] == ["@finance"] and seen["groups"]["finance"] == [ALICE, BOB]
+    assert {"email": ERIN, "role": "member", "pending": False} in seen["members"]
+    # Structure only, as in the panel: no content, and personal folders stay closed.
+    assert {"path": "/finance/budget.md", "kind": "file"} in seen["entries"]
+    assert admin.tool("read", path="/finance/budget.md")[0] == "unavailable"
+    home = alice.tool("list")[1]["home"]
+    assert admin.tool("get_access", path=home)[0] == "unavailable"
+    assert admin.tool("set_access", path=home, read=["*"], write=None)[0] == "unavailable"
+    assert admin.tool("set_access", path="/finance", read=["not a grant"], write=None)[0] == (
+        "invalid_metadata"
+    )
+
+    # Granting and taking away both take effect at once, and the description survives.
+    team.access("/finance", ["@finance"], ["@finance"], description="Money")
+    assert admin.tool("set_access", path="/finance", read=["@finance", ERIN], write=None)[0] == "ok"
+    assert sees(erin, "/finance/budget.md")
+    after = admin.tool("get_access", path="/finance")[1]
+    assert after["description"] == "Money" and after["write"] is None
+    assert admin.tool("set_group", name="finance", members=[ALICE])[0] == "ok"
+    assert not sees(people[BOB], "/finance/budget.md")
+    assert admin.tool("set_group", name="finance", members=["ghost@atlas.test"])[0] == (
+        "invalid_group"
+    )
+    log = admin.panel.get("/api/activity").json()["activity"]
+    assert any(row["action"] == "edit_group" and row["ok"] for row in log)
+    assert any(row["action"] == "edit_access" and not row["ok"] for row in log)
+
+    # Revoking that one token ends it; the listing says which token manages.
+    listed = admin.panel.get("/api/tokens").json()["tokens"]
+    assert [token["manage"] for token in listed] == [False, True]
+    admin.panel.delete(f"/api/tokens/{listed[1]['id']}")
+    assert admin.tool("get_access")[0] == "unauthenticated"
+    assert_sound(team)

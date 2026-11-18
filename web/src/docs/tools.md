@@ -37,6 +37,18 @@ What every connected agent can call. Paths are absolute inside the brain, for ex
 | `use_skill` | Load a shared procedure by name and follow it. |
 | `list_learnings` | The newest notes from the `LEARNINGS.md` files you can read. |
 
+## Managing access
+
+Only for an administrator's token created with *Can manage access and groups*. Any other token gets `forbidden`.
+
+| Tool | What it does |
+| --- | --- |
+| `get_access` | A folder and its subfolders with the `read` and `write` lists each declares, plus every group and member. Shows folder names, never content. |
+| `set_access` | Replace a folder's `read` and `write` lists. `null` inherits from the folder above; an empty list grants nobody. Description and start here stay. |
+| `set_group` | Replace a group's members, creating it if missing. An empty list deletes it and retires its name. |
+
+Inviting and removing members, password resets and activity stay in the panel.
+
 ## Errors
 
 Every error has a stable code and a message written for the agent.
@@ -51,5 +63,6 @@ Every error has a stable code and a message written for the agent.
 | `folder_not_movable` | The folder has access set by an administrator, or content you cannot see. |
 | `invalid_edit` | The fragment to replace was not found exactly once. |
 | `file_too_large` | Over the size limit for this channel. |
+| `forbidden` | The token cannot do this: managing access needs an administrator's managing token. |
 | `no_history` | There is no revision you are allowed to restore. |
 | `unauthenticated` | The token is missing, wrong or revoked. |

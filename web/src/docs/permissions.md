@@ -36,6 +36,11 @@ An administrator sees the structure of the whole brain and the rules of every fo
 
 ## Changing access
 
-Use **Access** in this panel: it lists every folder with what it declares or inherits. Agents cannot change access lists; they can only create folders, which start with the rules of the folder above.
+Two ways, both for administrators only:
 
-A folder whose access was set by an administrator cannot be moved or deleted by an agent.
+- **Access** in this panel lists every folder with what it declares or inherits.
+- **From a harness**, with a token created in **Connect a harness** with *Can manage access and groups*. The agent then has `get_access`, `set_access` and `set_group`. See [MCP tools](#/docs/tools).
+
+Every other token, including an administrator's everyday one, cannot change access lists: its agent can only create folders, which start with the rules of the folder above. Keep the managing token for the harness where you administer: an agent that reads the brain reads text written by teammates, and a token that cannot manage cannot be talked into opening a folder.
+
+A folder whose access was declared cannot be moved or deleted by an agent.

@@ -46,7 +46,11 @@ Brainfold speaks MCP over streamable HTTP at `/mcp` and expects the header `Auth
 
 ## What the token cannot do
 
-A harness token works only for the brain: the MCP tools and file transfer. It cannot sign in to this panel, invite people or change access. The panel uses a separate session that a harness never sees.
+A harness token works only for the brain: the MCP tools and file transfer. It cannot sign in to this panel or invite people. The panel uses a separate session that a harness never sees.
+
+## Managing access from a harness
+
+An administrator can tick **Can manage access and groups** when creating a token. An agent connected with it can change who reads and writes each folder and edit groups: ask it "give @finance read on /projects/costs". Tokens without the tick, and every member's token, cannot. Use a managing token where you administer and an ordinary one for everyday work.
 
 ## Revoking
 

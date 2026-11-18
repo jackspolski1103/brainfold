@@ -63,12 +63,14 @@ CREATE INDEX revisions_path ON revisions(path);
 ALTER TABLE users ADD COLUMN invited REAL;
 UPDATE users SET invited = strftime('%s', 'now') WHERE invite IS NOT NULL;
 """,
+    "ALTER TABLE tokens ADD COLUMN manage INTEGER NOT NULL DEFAULT 0;",
 )
 
 
 class User(NamedTuple):
     email: str
     role: str
+    manage: bool = False  # this harness token may change folder access and groups
 
 
 def _digest(token: str) -> str:
@@ -321,16 +323,19 @@ class Accounts:
     def set_setting(self, key: str, value: str) -> None:
         self._run("INSERT OR REPLACE INTO settings VALUES (?, ?)", key, value)
 
-    def issue(self, email: str, kind: str, name: Any, ttl: float | None = None) -> tuple[int, str]:
+    def issue(
+        self, email: str, kind: str, name: Any, ttl: float | None = None, manage: bool = False
+    ) -> tuple[int, str]:
         if not isinstance(name, str) or not 1 <= len(name.strip()) <= 80:
             raise BrainfoldError("invalid_name", "The token needs a name of up to 80 characters.")
         token = f"brainfold_{secrets.token_urlsafe(32)}"
         now = time.time()
         with self._lock:
             self._run(
-                "INSERT INTO tokens(digest, email, kind, name, created, expires) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO tokens(digest, email, kind, name, created, expires, manage) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 *(_digest(token), email, kind, name.strip(), now, now + ttl if ttl else None),
+                int(manage),
             )
             return self._run("SELECT last_insert_rowid()")[0][0], token
 
@@ -340,23 +345,31 @@ class Accounts:
         if not token:
             raise _unauthenticated()
         rows = self._run(
-            "SELECT tokens.id, users.email, users.role FROM tokens JOIN users USING (email) "
+            "SELECT tokens.id, users.email, users.role, tokens.manage "
+            "FROM tokens JOIN users USING (email) "
             "WHERE digest = ? AND kind = ? AND (expires IS NULL OR expires > ?)",
             *(_digest(token), kind, time.time()),
         )
         if not rows:
             raise _unauthenticated()
         self._run("UPDATE tokens SET last_used = ? WHERE id = ?", time.time(), rows[0][0])
-        return User(rows[0][1], rows[0][2])
+        # The role is read now, not when the token was made: only an administrator manages.
+        return User(rows[0][1], rows[0][2], bool(rows[0][3]) and rows[0][2] == "admin")
 
     def logout(self, token: str | None) -> None:
         self._run("DELETE FROM tokens WHERE digest = ?", _digest(token or ""))
 
     def tokens(self, email: str) -> list[dict[str, Any]]:
         return [
-            {"id": identifier, "name": name, "created": created, "last_used": last_used}
-            for identifier, name, created, last_used in self._run(
-                "SELECT id, name, created, last_used FROM tokens "
+            {
+                "id": identifier,
+                "name": name,
+                "created": created,
+                "last_used": last_used,
+                "manage": bool(manage),
+            }
+            for identifier, name, created, last_used, manage in self._run(
+                "SELECT id, name, created, last_used, manage FROM tokens "
                 "WHERE email = ? AND kind = 'access' ORDER BY id",
                 email,
             )

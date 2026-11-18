@@ -112,7 +112,7 @@ Tool names are English: `list`, `read`, `write`, `edit`, `append`, `move`, `dele
 - A spreadsheet uploaded with `brainfold put` to a restricted folder downloads only with an authorized token; the panel cookie does not work on those routes.
 - A reader sees neither paths nor content of a previous restricted location in history, and cannot restore from it.
 - Moving a folder that contains one entry the caller cannot read or write, or one `.brainfold.toml` declaring access, changes nothing. Deleting a non-empty folder changes nothing.
-- Every new operation has denial tests, and an agent can never change `read` or `write`.
+- Every new operation has denial tests, and an agent can never change `read` or `write`. (Since decision 0016 an administrator's token created to manage access can; no other token can.)
 - Through the shipped compose file, with a certificate the client trusts, two accounts reach one server over HTTPS; verified locally with the proxy's own certificate authority trusted on the test machine. Use from other machines depends on the pending hosting decision.
 - On a server started with `--public-url`, `/api/setup` without the printed code creates no account.
 - After a restricted folder is removed and a new folder is created at the same path, a writer of the new folder who was not a reader of the old one sees no earlier history and cannot restore earlier content. The same holds after an administrator widens `read`, by hand or through the API.

@@ -33,9 +33,10 @@ class Person:
         self.agent = httpx.Client(base_url=base, timeout=60)  # sends only the token
         self.token = ""
 
-    def connect(self, name: str = "harness") -> str:
+    def connect(self, name: str = "harness", manage: bool = False) -> str:
         """Create a harness token in the panel, as a person does in Connect."""
-        self.token = self.panel.post("/api/tokens", json={"name": name}).json()["token"]
+        body = {"name": name, "manage": manage}
+        self.token = self.panel.post("/api/tokens", json=body).json()["token"]
         self.agent.headers["Authorization"] = f"Bearer {self.token}"
         return self.token
 

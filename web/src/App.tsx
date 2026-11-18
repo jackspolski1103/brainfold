@@ -241,7 +241,7 @@ function Panel({ user, route, onSignOut }: { user: User; route: string; onSignOu
             {is("/brain")(path) && <Brain admin={admin} kind="folder" path={path.slice("/brain".length) || "/"} />}
             {is("/file")(path) && <Brain admin={admin} kind="file" path={path.slice("/file".length)} />}
             {is("/skills")(path) && <Skills />}
-            {is("/connect")(path) && <Connect />}
+            {is("/connect")(path) && <Connect admin={admin} />}
             {is("/account")(path) && <Account user={user} />}
             {admin && is("/access")(path) && <AccessPage />}
             {admin && is("/members")(path) && <Members self={user.email} tab={path === "/members/groups" ? "groups" : "users"} inviting={route.endsWith("?invite")} />}

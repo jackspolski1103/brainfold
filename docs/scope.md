@@ -12,6 +12,7 @@ Confirmed by the author on 2026-11-12. See decisions [0008](decisions/0008-bound
 4. **Skills inside the tree.** A skill is a folder with a `SKILL.md`. The server lists to each agent the skills it can read and serves them through `use_skill`. Running the procedure is the harness's job.
 5. **Own accounts.** Email and password; the first account administers and invites the rest; each person creates the token their harness uses. One organization per server.
 6. **A web panel** in the style of Infisical or Langfuse: browse the brain, edit access per folder, manage members, groups and tokens, and see activity.
+7. **Access from the harness for administrators.** A token an administrator creates for it lets their agent set folder access and groups (decision [0016](decisions/0016-access-from-a-harness.md)). Members, invitations and activity stay in the panel.
 
 A team runs its own server and each person connects their harness with their token.
 
