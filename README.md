@@ -6,7 +6,7 @@ A personal, independent open source project, licensed under [Apache-2.0](LICENSE
 
 Brainfold is an MCP server that turns a folder into a team's shared brain: files with permissions that any harness (Claude Code, Codex or another) reads and writes. Full scope, including what it deliberately does not do, is in [docs/scope.md](docs/scope.md).
 
-![Brainfold panel: folder access, a file an agent wrote, what another member sees, and the activity log](docs/images/demo.gif)
+![Two agents call the same Brainfold server: one writes into the costs folder, the other is refused, and the refusal is in the activity log](docs/images/demo.gif)
 
 The same server answers each person's agent with that person's access. In the synthetic example, the costs folder does not exist for a member of the contracts team, and the refused read is in the activity log.
 
