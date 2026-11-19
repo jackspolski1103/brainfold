@@ -4,6 +4,10 @@ A personal, independent open source project, licensed under [Apache-2.0](LICENSE
 
 Brainfold is an MCP server that turns a folder into a team's shared brain: files with permissions that any harness (Claude Code, Codex or another) reads and writes. Full scope, including what it deliberately does not do, is in [docs/scope.md](docs/scope.md).
 
+![Brainfold panel: folder access, a file an agent wrote, what another member sees, and the activity log](docs/images/demo.gif)
+
+The same server answers each person's agent with that person's access. In the synthetic example, the costs folder does not exist for a member of the contracts team, and the refused read is in the activity log.
+
 ## Status
 
 Development implementation. What works today: the MCP server over a folder on disk, read and write permissions per folder, file operations with conflict detection, files of any type through `brainfold put` and `brainfold get`, history and restore, folder guidance written by agents, personal folders, text search, skills delivered to each agent through `use_skill`, a learnings log, email and password accounts, personal tokens, groups, an activity log, and a web panel. By default the server listens on loopback only; a compose file runs it behind a TLS proxy for use across machines. Example data is synthetic. The plan in progress is [docs/designs/core-permissioned-memory.md](docs/designs/core-permissioned-memory.md).
@@ -39,7 +43,11 @@ brainfold get /hr/salaries.xlsx ./salaries.xlsx
 cd web && npm install && npm run build     # writes the panel into src/brainfold/panel
 ```
 
-Then `brainfold serve` shows it at the server's address: an overview, the brain as a folder tree with search and rendered Markdown, the skills each person's agent receives, tokens with setup commands for each harness, an access table for every folder, members and groups, and activity. The product documentation is part of the panel, at `#/docs`, and needs no sign-in; its pages are Markdown files in `web/src/docs/`. While developing, `npm run dev` serves it with live reload and forwards `/api` to a server on port 8020. The container image builds the panel by itself.
+Start `brainfold serve` after the build (restart it if it was running; until then `/` answers 404) and it shows the panel at the server's address: an overview, the brain as a folder tree with search and rendered Markdown, the skills each person's agent receives, tokens with setup commands for each harness, an access table for every folder, members and groups, and activity. The product documentation is part of the panel, at `#/docs`, and needs no sign-in; its pages are Markdown files in `web/src/docs/`. While developing, `npm run dev` serves it with live reload and forwards `/api` to a server on port 8020. The container image builds the panel by itself.
+
+| Access per folder | Activity, with refusals |
+|---|---|
+| ![Access table: who reads and who writes each folder](docs/images/access.png) | ![Activity log with one denied read](docs/images/activity.png) |
 
 ## Run it for a team
 
