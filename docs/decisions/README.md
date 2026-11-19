@@ -16,6 +16,7 @@ Decisions are recorded when the author confirms them. A later change keeps the h
 | [0015 A password change revokes harness tokens](0015-password-change-revokes-tokens.md) | Accepted |
 | [0016 Access and groups managed from a harness](0016-access-from-a-harness.md) | Accepted; replaces the 0010 rule that an agent never changes `read` or `write` |
 | [0017 The repository is public](0017-public-repository.md) | Accepted |
+| [0018 Landing page and public documentation demo](0018-public-site.md) | Accepted |
 
 ## Pending
 
