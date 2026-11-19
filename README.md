@@ -2,6 +2,8 @@
 
 A personal, independent open source project, licensed under [Apache-2.0](LICENSE).
 
+[Website](https://brainfold-site-production.up.railway.app) · [Documentation](https://brainfold-demo-production.up.railway.app/#/docs)
+
 Brainfold is an MCP server that turns a folder into a team's shared brain: files with permissions that any harness (Claude Code, Codex or another) reads and writes. Full scope, including what it deliberately does not do, is in [docs/scope.md](docs/scope.md).
 
 ![Brainfold panel: folder access, a file an agent wrote, what another member sees, and the activity log](docs/images/demo.gif)
